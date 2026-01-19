@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PSV Calculator | Franc Engineering</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .franc-blue { color: #1e3a5f; }
+        .franc-blue-bg { background-color: #1e3a5f; }
+        .franc-accent { color: #2563eb; }
+        .franc-accent-bg { background-color: #2563eb; }
+        .step-indicator { transition: all 0.3s ease; }
+        .step-indicator.active { transform: scale(1.1); }
+        .scenario-card { transition: all 0.2s ease; }
+        .scenario-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .scenario-card.selected { border-color: #2563eb; background-color: #eff6ff; }
+        .input-field:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
+        .fade-in { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // API Configuration - Update this for production
+        const API_BASE = ''; // Empty for local calculations, or 'https://your-api.railway.app'
+
+        // Component Database
+        const COMPONENTS = {
+            methane: { name: 'Methane', formula: 'CH4', mw: 16.043, tc: 190.56, pc: 4599000, omega: 0.0115, lfl: 5.0, ufl: 15.0 },
+            ethane: { name: 'Ethane', formula: 'C2H6', mw: 30.070, tc: 305.32, pc: 4872000, omega: 0.0995, lfl: 3.0, ufl: 12.4 },
+            propane: { name: 'Propane', formula: 'C3H8', mw: 44.096, tc: 369.83, pc: 4248000, omega: 0.1523, lfl: 2.1, ufl: 9.5 },
+            isobutane: { name: 'Isobutane', formula: 'iC4', mw: 58.122, tc: 407.85, pc: 3640000, omega: 0.1835, lfl: 1.8, ufl: 8.4 },
+            nbutane: { name: 'n-Butane', formula: 'nC4', mw: 58.122, tc: 425.12, pc: 3796000, omega: 0.2002, lfl: 1.8, ufl: 8.4 },
+            isopentane: { name: 'Isopentane', formula: 'iC5', mw: 72.149, tc: 460.35, pc: 3381000, omega: 0.2275, lfl: 1.4, ufl: 7.6 },
+            npentane: { name: 'n-Pentane', formula: 'nC5', mw: 72.149, tc: 469.70, pc: 3370000, omega: 0.2515, lfl: 1.4, ufl: 7.8 },
+            nhexane: { name: 'n-Hexane', formula: 'C6', mw: 86.175, tc: 507.60, pc: 3025000, omega: 0.3013, lfl: 1.2, ufl: 7.4 },
+            nheptane: { name: 'n-Heptane', formula: 'C7', mw: 100.202, tc: 540.20, pc: 2740000, omega: 0.3495, lfl: 1.05, ufl: 6.7 },
+            noctane: { name: 'n-Octane', formula: 'C8', mw: 114.229, tc: 568.70, pc: 2490000, omega: 0.3996, lfl: 1.0, ufl: 6.5 },
+            nnonane: { name: 'n-Nonane', formula: 'C9', mw: 128.255, tc: 594.60, pc: 2290000, omega: 0.4435, lfl: 0.8, ufl: 5.9 },
+            ndecane: { name: 'n-Decane', formula: 'C10', mw: 142.282, tc: 617.70, pc: 2110000, omega: 0.4923, lfl: 0.8, ufl: 5.4 },
+            nitrogen: { name: 'Nitrogen', formula: 'N2', mw: 28.014, tc: 126.20, pc: 3398000, omega: 0.0377, lfl: null, ufl: null },
+            oxygen: { name: 'Oxygen', formula: 'O2', mw: 31.999, tc: 154.58, pc: 5043000, omega: 0.0222, lfl: null, ufl: null },
+            co2: { name: 'CO2', formula: 'CO2', mw: 44.010, tc: 304.21, pc: 7383000, omega: 0.2236, lfl: null, ufl: null },
+            h2s: { name: 'H2S', formula: 'H2S', mw: 34.081, tc: 373.53, pc: 8963000, omega: 0.0942, lfl: 4.0, ufl: 44.0 },
+            water: { name: 'Water', formula: 'H2O', mw: 18.015, tc: 647.10, pc: 22064000, omega: 0.3449, lfl: null, ufl: null },
+        };
+
+        // Fluid Presets
+        const PRESETS = {
+            natural_gas: { name: 'Natural Gas', composition: { methane: 85, ethane: 7, propane: 3, nbutane: 2, co2: 2, nitrogen: 1 }},
+            rich_gas: { name: 'Rich Gas', composition: { methane: 70, ethane: 12, propane: 8, isobutane: 3, nbutane: 3, isopentane: 1, npentane: 1, co2: 2 }},
+            propane_pure: { name: 'Propane', composition: { propane: 100 }},
+            butane_mix: { name: 'Butane Mix', composition: { isobutane: 50, nbutane: 50 }},
+            ngl: { name: 'NGL', composition: { ethane: 40, propane: 30, isobutane: 10, nbutane: 10, npentane: 10 }},
+        };
+
+        // API 526 Orifices
+        const ORIFICES = [
+            { letter: 'D', area: 0.110 }, { letter: 'E', area: 0.196 }, { letter: 'F', area: 0.307 },
+            { letter: 'G', area: 0.503 }, { letter: 'H', area: 0.785 }, { letter: 'J', area: 1.287 },
+            { letter: 'K', area: 1.838 }, { letter: 'L', area: 2.853 }, { letter: 'M', area: 3.600 },
+            { letter: 'N', area: 4.340 }, { letter: 'P', area: 6.380 }, { letter: 'Q', area: 11.05 },
+            { letter: 'R', area: 16.00 }, { letter: 'T', area: 26.00 },
+        ];
+
+        // Scenarios
+        const SCENARIOS = [
+            { id: 'fire_wetted', name: 'Fire - Wetted', icon: '🔥', desc: 'Pool fire on vessel with liquid inventory' },
+            { id: 'fire_unwetted', name: 'Fire - Unwetted', icon: '💨', desc: 'Fire exposure on vapor space' },
+            { id: 'blocked_vapor', name: 'Blocked Vapor', icon: '⛔', desc: 'Blocked vapor outlet with upstream source' },
+            { id: 'blocked_liquid', name: 'Blocked Liquid', icon: '🚫', desc: 'Blocked liquid outlet, thermal expansion' },
+            { id: 'cv_failure', name: 'CV Failure', icon: '⚠️', desc: 'Control valve fails open' },
+        ];
+
+        // Simplified Peng-Robinson calculations (client-side)
+        function calculateProperties(composition, T_F, P_psig) {
+            const T_K = (T_F + 459.67) * 5/9;
+            const P_Pa = (P_psig + 14.7) * 6894.76;
+            const R = 8.314462;
+
+            let mw = 0, totalMol = 0;
+            const compData = [];
+
+            Object.entries(composition).forEach(([comp, molPct]) => {
+                if (molPct > 0 && COMPONENTS[comp]) {
+                    const c = COMPONENTS[comp];
+                    const z = molPct / 100;
+                    totalMol += z;
+                    compData.push({ ...c, z });
+                }
+            });
+
+            // Normalize and calculate MW
+            compData.forEach(c => {
+                c.z = c.z / totalMol;
+                mw += c.z * c.mw;
+            });
+
+            // Simplified Z calculation (SRK-like)
+            let a_mix = 0, b_mix = 0;
+            compData.forEach(c => {
+                const Tr = T_K / c.tc;
+                const kappa = 0.37464 + 1.54226 * c.omega - 0.26992 * c.omega * c.omega;
+                const alpha = Math.pow(1 + kappa * (1 - Math.sqrt(Tr)), 2);
+                const a_i = 0.45724 * R * R * c.tc * c.tc / c.pc * alpha;
+                const b_i = 0.07780 * R * c.tc / c.pc;
+                a_mix += c.z * Math.sqrt(a_i);
+                b_mix += c.z * b_i;
+            });
+            a_mix = a_mix * a_mix;
+
+            const A = a_mix * P_Pa / (R * R * T_K * T_K);
+            const B = b_mix * P_Pa / (R * T_K);
+
+            // Solve cubic for Z (simplified - take largest root for vapor)
+            let Z = 1.0;
+            for (let i = 0; i < 20; i++) {
+                const Z_new = 1 + B - A * B / (Z * (Z + B));
+                if (Math.abs(Z_new - Z) < 0.0001) break;
+                Z = 0.5 * (Z + Z_new);
+            }
+            Z = Math.max(0.1, Math.min(Z, 1.5));
+
+            // Calculate gamma (Cp/Cv)
+            const gamma = 1.1 + 0.05 * (50 / mw);
+
+            // Calculate density
+            const density = P_Pa * (mw / 1000) / (Z * R * T_K);
+
+            // LFL/UFL using Le Chatelier
+            let lfl_inv = 0, ufl_inv = 0, flammable_total = 0;
+            compData.forEach(c => {
+                if (c.lfl && c.lfl > 0) {
+                    lfl_inv += c.z / c.lfl;
+                    ufl_inv += c.z / c.ufl;
+                    flammable_total += c.z;
+                }
+            });
+
+            const lfl = flammable_total > 0 && lfl_inv > 0 ? flammable_total / lfl_inv : null;
+            const ufl = flammable_total > 0 && ufl_inv > 0 ? flammable_total / ufl_inv : null;
+
+            return { mw, Z, gamma, density, lfl, ufl };
+        }
+
+        // Fire heat input calculation
+        function fireHeatInput(wetted_area_ft2, insulated = false) {
+            const F = insulated ? 0.3 : 1.0;
+            if (wetted_area_ft2 <= 2800) {
+                return 21000 * F * Math.pow(wetted_area_ft2, 0.82);
+            }
+            return 34500 * F * Math.pow(wetted_area_ft2, 0.82);
+        }
+
+        // Wetted area for horizontal vessel
+        function wettedAreaHorizontal(diameter_ft, length_ft, liquid_fraction) {
+            const R = diameter_ft / 2;
+            const h = liquid_fraction * diameter_ft;
+            const theta = 2 * Math.acos((R - h) / R);
+            const arc = R * theta;
+            const shell = arc * length_ft;
+            const segment = (R * R / 2) * (theta - Math.sin(theta));
+            const heads = 2 * segment;
+            return shell + heads;
+        }
+
+        // PSV sizing calculation
+        function sizePSV(scenario, props, conditions, vessel) {
+            const { mw, Z, gamma } = props;
+            const { set_pressure, back_pressure, temperature, latent_heat, flow_rate } = conditions;
+
+            const accumulation = (scenario === 'fire_wetted' || scenario === 'fire_unwetted') ? 0.21 : 0.10;
+            const P1_psia = set_pressure * (1 + accumulation) + 14.7;
+            const P2_psia = back_pressure + 14.7;
+            const T_R = temperature + 459.67;
+
+            let W_lb_hr, Q_fire, wetted_area;
+
+            if (scenario === 'fire_wetted' && vessel) {
+                wetted_area = wettedAreaHorizontal(vessel.diameter, vessel.length, vessel.liquid_level);
+                Q_fire = fireHeatInput(wetted_area, vessel.insulated);
+                W_lb_hr = Q_fire / latent_heat;
+            } else if (scenario === 'fire_unwetted' && vessel) {
+                wetted_area = wettedAreaHorizontal(vessel.diameter, vessel.length, 0.1);
+                Q_fire = fireHeatInput(wetted_area * 0.5, false) * 0.3;
+                W_lb_hr = Q_fire / (0.5 * 100);
+            } else {
+                W_lb_hr = flow_rate || 10000;
+                Q_fire = null;
+                wetted_area = null;
+            }
+
+            // Calculate C coefficient
+            const C = 520 * Math.sqrt(gamma * Math.pow(2 / (gamma + 1), (gamma + 1) / (gamma - 1)));
+
+            // Critical pressure ratio
+            const P_crit = Math.pow(2 / (gamma + 1), gamma / (gamma - 1));
+            const P_ratio = P2_psia / P1_psia;
+            const isCritical = P_ratio <= P_crit;
+
+            // Calculate required area
+            let A_required;
+            if (isCritical) {
+                A_required = (W_lb_hr / (C * 0.975 * P1_psia)) * Math.sqrt(T_R * Z / mw);
+            } else {
+                const r = P_ratio;
+                const F2 = Math.sqrt((gamma / (gamma - 1)) * Math.pow(r, 2/gamma) *
+                    ((1 - Math.pow(r, (gamma-1)/gamma)) / (1 - r)));
+                A_required = (W_lb_hr / (735 * F2 * 0.975)) * Math.sqrt(T_R * Z / (mw * P1_psia * P2_psia));
+            }
+
+            // Select orifice
+            let selectedOrifice = ORIFICES[ORIFICES.length - 1];
+            for (const o of ORIFICES) {
+                if (o.area >= A_required) {
+                    selectedOrifice = o;
+                    break;
+                }
+            }
+
+            const utilization = (A_required / selectedOrifice.area) * 100;
+
+            return {
+                relief_rate: W_lb_hr,
+                relieving_pressure: P1_psia,
+                back_pressure: P2_psia,
+                flow_type: isCritical ? 'Critical' : 'Subcritical',
+                required_area: A_required,
+                selected_orifice: selectedOrifice.letter,
+                orifice_area: selectedOrifice.area,
+                utilization,
+                heat_input: Q_fire,
+                wetted_area,
+            };
+        }
+
+        // Main App Component
+        function PSVCalculator() {
+            const [step, setStep] = useState(1);
+            const [preset, setPreset] = useState('');
+            const [composition, setComposition] = useState({});
+            const [conditions, setConditions] = useState({
+                temperature: 100,
+                tempUnit: 'F',
+                pressure: 150,
+                pressureUnit: 'psig',
+                set_pressure: 150,
+                back_pressure: 0,
+                latent_heat: 150,
+                flow_rate: 10000,
+            });
+            const [vessel, setVessel] = useState({
+                diameter: 6,
+                length: 20,
+                liquid_level: 0.5,
+                insulated: false,
+            });
+            const [scenario, setScenario] = useState('fire_wetted');
+            const [results, setResults] = useState(null);
+            const [showUpgrade, setShowUpgrade] = useState(false);
+
+            // Handle preset selection
+            const handlePresetChange = (presetId) => {
+                setPreset(presetId);
+                if (PRESETS[presetId]) {
+                    setComposition(PRESETS[presetId].composition);
+                }
+            };
+
+            // Handle composition change
+            const handleCompChange = (comp, value) => {
+                setComposition(prev => ({
+                    ...prev,
+                    [comp]: parseFloat(value) || 0
+                }));
+            };
+
+            // Calculate results
+            const calculate = () => {
+                const T_F = conditions.tempUnit === 'C' ? conditions.temperature * 9/5 + 32 :
+                            conditions.tempUnit === 'K' ? (conditions.temperature - 273.15) * 9/5 + 32 :
+                            conditions.temperature;
+
+                const P_psig = conditions.pressureUnit === 'psia' ? conditions.pressure - 14.7 :
+                               conditions.pressureUnit === 'bar' ? conditions.pressure * 14.5038 - 14.7 :
+                               conditions.pressureUnit === 'kPa' ? conditions.pressure * 0.145038 - 14.7 :
+                               conditions.pressure;
+
+                const props = calculateProperties(composition, T_F, P_psig);
+                const sizing = sizePSV(scenario, props, {
+                    set_pressure: conditions.set_pressure,
+                    back_pressure: conditions.back_pressure,
+                    temperature: T_F,
+                    latent_heat: conditions.latent_heat,
+                    flow_rate: conditions.flow_rate,
+                }, vessel);
+
+                setResults({ ...props, ...sizing });
+                setStep(4);
+            };
+
+            const totalMol = Object.values(composition).reduce((a, b) => a + (b || 0), 0);
+
+            return (
+                <div className="max-w-4xl mx-auto p-4 sm:p-6">
+                    {/* Header */}
+                    <div className="text-center mb-8">
+                        <h1 className="text-2xl sm:text-3xl font-bold franc-blue mb-2">PSV Sizing Calculator</h1>
+                        <p className="text-gray-600">Pressure Safety Valve Sizing per API 520/521</p>
+                        <p className="text-sm text-gray-500 mt-1">Franc Engineering | franceng.com</p>
+                    </div>
+
+                    {/* Progress Steps */}
+                    <div className="flex justify-center mb-8">
+                        <div className="flex items-center space-x-2 sm:space-x-4">
+                            {[1, 2, 3, 4].map((s) => (
+                                <React.Fragment key={s}>
+                                    <div
+                                        className={`step-indicator w-10 h-10 rounded-full flex items-center justify-center font-semibold cursor-pointer
+                                            ${step >= s ? 'franc-accent-bg text-white' : 'bg-gray-200 text-gray-500'}
+                                            ${step === s ? 'active ring-4 ring-blue-200' : ''}`}
+                                        onClick={() => s < step && setStep(s)}
+                                    >
+                                        {s}
+                                    </div>
+                                    {s < 4 && <div className={`w-8 sm:w-16 h-1 ${step > s ? 'franc-accent-bg' : 'bg-gray-200'}`}></div>}
+                                </React.Fragment>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Step Labels */}
+                    <div className="flex justify-between mb-8 text-xs sm:text-sm text-gray-500 px-4">
+                        <span className={step === 1 ? 'font-semibold franc-accent' : ''}>Fluid</span>
+                        <span className={step === 2 ? 'font-semibold franc-accent' : ''}>Conditions</span>
+                        <span className={step === 3 ? 'font-semibold franc-accent' : ''}>Scenario</span>
+                        <span className={step === 4 ? 'font-semibold franc-accent' : ''}>Results</span>
+                    </div>
+
+                    {/* Step 1: Fluid Selection */}
+                    {step === 1 && (
+                        <div className="fade-in bg-white rounded-xl shadow-lg p-6">
+                            <h2 className="text-xl font-semibold mb-4">Select Fluid</h2>
+
+                            {/* Presets */}
+                            <div className="mb-6">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Quick Select</label>
+                                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                                    {Object.entries(PRESETS).map(([id, p]) => (
+                                        <button
+                                            key={id}
+                                            className={`px-3 py-2 rounded-lg text-sm font-medium transition
+                                                ${preset === id ? 'franc-accent-bg text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}`}
+                                            onClick={() => handlePresetChange(id)}
+                                        >
+                                            {p.name}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Composition Grid */}
+                            <div className="mb-4">
+                                <div className="flex justify-between items-center mb-2">
+                                    <label className="block text-sm font-medium text-gray-700">Composition (mol%)</label>
+                                    <span className={`text-sm font-medium ${Math.abs(totalMol - 100) < 0.1 ? 'text-green-600' : 'text-red-500'}`}>
+                                        Total: {totalMol.toFixed(1)}%
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                    {Object.entries(COMPONENTS).map(([id, comp]) => (
+                                        <div key={id} className="flex items-center space-x-2">
+                                            <label className="w-16 text-xs text-gray-600">{comp.formula}</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                step="0.1"
+                                                value={composition[id] || ''}
+                                                onChange={(e) => handleCompChange(id, e.target.value)}
+                                                className="input-field w-full px-2 py-1 border rounded text-sm focus:outline-none"
+                                                placeholder="0"
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end mt-6">
+                                <button
+                                    onClick={() => setStep(2)}
+                                    disabled={totalMol < 99}
+                                    className="px-6 py-2 franc-accent-bg text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
+                                >
+                                    Next: Conditions →
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Step 2: Operating Conditions */}
+                    {step === 2 && (
+                        <div className="fade-in bg-white rounded-xl shadow-lg p-6">
+                            <h2 className="text-xl font-semibold mb-4">Operating Conditions</h2>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                {/* Temperature */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Temperature</label>
+                                    <div className="flex space-x-2">
+                                        <input
+                                            type="number"
+                                            value={conditions.temperature}
+                                            onChange={(e) => setConditions({...conditions, temperature: parseFloat(e.target.value)})}
+                                            className="input-field flex-1 px-3 py-2 border rounded-lg focus:outline-none"
+                                        />
+                                        <select
+                                            value={conditions.tempUnit}
+                                            onChange={(e) => setConditions({...conditions, tempUnit: e.target.value})}
+                                            className="px-3 py-2 border rounded-lg bg-white"
+                                        >
+                                            <option value="F">°F</option>
+                                            <option value="C">°C</option>
+                                            <option value="K">K</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* Pressure */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Operating Pressure</label>
+                                    <div className="flex space-x-2">
+                                        <input
+                                            type="number"
+                                            value={conditions.pressure}
+                                            onChange={(e) => setConditions({...conditions, pressure: parseFloat(e.target.value)})}
+                                            className="input-field flex-1 px-3 py-2 border rounded-lg focus:outline-none"
+                                        />
+                                        <select
+                                            value={conditions.pressureUnit}
+                                            onChange={(e) => setConditions({...conditions, pressureUnit: e.target.value})}
+                                            className="px-3 py-2 border rounded-lg bg-white"
+                                        >
+                                            <option value="psig">psig</option>
+                                            <option value="psia">psia</option>
+                                            <option value="bar">bar(g)</option>
+                                            <option value="kPa">kPa(g)</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* Set Pressure */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">PSV Set Pressure (psig)</label>
+                                    <input
+                                        type="number"
+                                        value={conditions.set_pressure}
+                                        onChange={(e) => setConditions({...conditions, set_pressure: parseFloat(e.target.value)})}
+                                        className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                    />
+                                </div>
+
+                                {/* Back Pressure */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Back Pressure (psig)</label>
+                                    <input
+                                        type="number"
+                                        value={conditions.back_pressure}
+                                        onChange={(e) => setConditions({...conditions, back_pressure: parseFloat(e.target.value)})}
+                                        className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                    />
+                                </div>
+
+                                {/* Latent Heat */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Latent Heat (BTU/lb)</label>
+                                    <input
+                                        type="number"
+                                        value={conditions.latent_heat}
+                                        onChange={(e) => setConditions({...conditions, latent_heat: parseFloat(e.target.value)})}
+                                        className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">For fire cases</p>
+                                </div>
+
+                                {/* Flow Rate */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Flow Rate (lb/hr)</label>
+                                    <input
+                                        type="number"
+                                        value={conditions.flow_rate}
+                                        onChange={(e) => setConditions({...conditions, flow_rate: parseFloat(e.target.value)})}
+                                        className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">For blocked outlet / CV failure</p>
+                                </div>
+                            </div>
+
+                            {/* Vessel Dimensions */}
+                            <div className="mt-6 pt-6 border-t">
+                                <h3 className="font-medium mb-3">Vessel Dimensions (for fire cases)</h3>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                    <div>
+                                        <label className="block text-xs text-gray-600 mb-1">Diameter (ft)</label>
+                                        <input
+                                            type="number"
+                                            value={vessel.diameter}
+                                            onChange={(e) => setVessel({...vessel, diameter: parseFloat(e.target.value)})}
+                                            className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-gray-600 mb-1">Length (ft)</label>
+                                        <input
+                                            type="number"
+                                            value={vessel.length}
+                                            onChange={(e) => setVessel({...vessel, length: parseFloat(e.target.value)})}
+                                            className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-gray-600 mb-1">Liquid Level (%)</label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            max="100"
+                                            value={vessel.liquid_level * 100}
+                                            onChange={(e) => setVessel({...vessel, liquid_level: parseFloat(e.target.value) / 100})}
+                                            className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                        />
+                                    </div>
+                                    <div className="flex items-center">
+                                        <label className="flex items-center space-x-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={vessel.insulated}
+                                                onChange={(e) => setVessel({...vessel, insulated: e.target.checked})}
+                                                className="w-4 h-4 rounded"
+                                            />
+                                            <span className="text-sm">Insulated</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-between mt-6">
+                                <button onClick={() => setStep(1)} className="px-6 py-2 border rounded-lg font-medium hover:bg-gray-50 transition">
+                                    ← Back
+                                </button>
+                                <button onClick={() => setStep(3)} className="px-6 py-2 franc-accent-bg text-white rounded-lg font-medium hover:bg-blue-700 transition">
+                                    Next: Scenario →
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Step 3: Scenario Selection */}
+                    {step === 3 && (
+                        <div className="fade-in bg-white rounded-xl shadow-lg p-6">
+                            <h2 className="text-xl font-semibold mb-4">Select Relief Scenario</h2>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {SCENARIOS.map((s) => (
+                                    <div
+                                        key={s.id}
+                                        className={`scenario-card p-4 border-2 rounded-xl cursor-pointer ${scenario === s.id ? 'selected' : 'border-gray-200'}`}
+                                        onClick={() => setScenario(s.id)}
+                                    >
+                                        <div className="text-3xl mb-2">{s.icon}</div>
+                                        <h3 className="font-semibold">{s.name}</h3>
+                                        <p className="text-sm text-gray-600 mt-1">{s.desc}</p>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="flex justify-between mt-6">
+                                <button onClick={() => setStep(2)} className="px-6 py-2 border rounded-lg font-medium hover:bg-gray-50 transition">
+                                    ← Back
+                                </button>
+                                <button onClick={calculate} className="px-6 py-2 franc-accent-bg text-white rounded-lg font-medium hover:bg-blue-700 transition">
+                                    Calculate →
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Step 4: Results */}
+                    {step === 4 && results && (
+                        <div className="fade-in space-y-6">
+                            {/* Main Results Card */}
+                            <div className="bg-white rounded-xl shadow-lg p-6">
+                                <div className="flex justify-between items-start mb-4">
+                                    <h2 className="text-xl font-semibold">Sizing Results</h2>
+                                    <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
+                                        {SCENARIOS.find(s => s.id === scenario)?.name}
+                                    </span>
+                                </div>
+
+                                {/* Orifice Result - Highlighted */}
+                                <div className="bg-blue-50 rounded-xl p-6 mb-6 text-center">
+                                    <p className="text-sm text-gray-600 mb-1">Selected Orifice</p>
+                                    <p className="text-5xl font-bold franc-accent mb-2">{results.selected_orifice}</p>
+                                    <p className="text-lg text-gray-700">{results.orifice_area} in²</p>
+                                    <p className="text-sm text-gray-500 mt-2">
+                                        {results.utilization.toFixed(1)}% utilized ({results.required_area.toFixed(4)} in² required)
+                                    </p>
+                                </div>
+
+                                {/* Results Grid */}
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                    <div className="p-3 bg-gray-50 rounded-lg">
+                                        <p className="text-xs text-gray-500">Relief Rate</p>
+                                        <p className="text-lg font-semibold">{results.relief_rate.toLocaleString()}</p>
+                                        <p className="text-xs text-gray-500">lb/hr</p>
+                                    </div>
+                                    <div className="p-3 bg-gray-50 rounded-lg">
+                                        <p className="text-xs text-gray-500">Relieving P</p>
+                                        <p className="text-lg font-semibold">{results.relieving_pressure.toFixed(1)}</p>
+                                        <p className="text-xs text-gray-500">psia</p>
+                                    </div>
+                                    <div className="p-3 bg-gray-50 rounded-lg">
+                                        <p className="text-xs text-gray-500">Flow Type</p>
+                                        <p className="text-lg font-semibold">{results.flow_type}</p>
+                                    </div>
+                                    <div className="p-3 bg-gray-50 rounded-lg">
+                                        <p className="text-xs text-gray-500">Molecular Wt</p>
+                                        <p className="text-lg font-semibold">{results.mw.toFixed(2)}</p>
+                                        <p className="text-xs text-gray-500">g/mol</p>
+                                    </div>
+                                </div>
+
+                                {results.heat_input && (
+                                    <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-4">
+                                        <div className="p-3 bg-orange-50 rounded-lg">
+                                            <p className="text-xs text-gray-500">Heat Input</p>
+                                            <p className="text-lg font-semibold">{(results.heat_input / 1e6).toFixed(3)}</p>
+                                            <p className="text-xs text-gray-500">MMBtu/hr</p>
+                                        </div>
+                                        <div className="p-3 bg-orange-50 rounded-lg">
+                                            <p className="text-xs text-gray-500">Wetted Area</p>
+                                            <p className="text-lg font-semibold">{results.wetted_area?.toFixed(1)}</p>
+                                            <p className="text-xs text-gray-500">ft²</p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Fluid Properties */}
+                                <div className="mt-6 pt-6 border-t">
+                                    <h3 className="font-medium mb-3">Fluid Properties</h3>
+                                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 text-sm">
+                                        <div><span className="text-gray-500">Z:</span> <span className="font-medium">{results.Z.toFixed(4)}</span></div>
+                                        <div><span className="text-gray-500">γ:</span> <span className="font-medium">{results.gamma.toFixed(3)}</span></div>
+                                        <div><span className="text-gray-500">ρ:</span> <span className="font-medium">{results.density.toFixed(2)} kg/m³</span></div>
+                                        {results.lfl && <div><span className="text-gray-500">LFL:</span> <span className="font-medium">{results.lfl.toFixed(2)}%</span></div>}
+                                        {results.ufl && <div><span className="text-gray-500">UFL:</span> <span className="font-medium">{results.ufl.toFixed(2)}%</span></div>}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Upgrade CTA */}
+                            <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-xl shadow-lg p-6 text-white">
+                                <h3 className="text-xl font-semibold mb-2">Need a Professional Report?</h3>
+                                <p className="text-blue-100 mb-4">Get a detailed PDF calculation package or PE-stamped documentation.</p>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div className="bg-white/10 rounded-lg p-4">
+                                        <p className="font-semibold text-lg">Standard Report</p>
+                                        <p className="text-3xl font-bold my-2">$149</p>
+                                        <ul className="text-sm text-blue-100 space-y-1 mb-4">
+                                            <li>✓ Full calculation package</li>
+                                            <li>✓ PDF format</li>
+                                            <li>✓ 24-hour delivery</li>
+                                        </ul>
+                                        <a href="mailto:info@franceng.com?subject=PSV%20Standard%20Report%20Request"
+                                           className="block text-center py-2 bg-white text-blue-600 rounded-lg font-medium hover:bg-blue-50 transition">
+                                            Request Quote
+                                        </a>
+                                    </div>
+
+                                    <div className="bg-white/10 rounded-lg p-4 ring-2 ring-yellow-400">
+                                        <p className="font-semibold text-lg">PE-Reviewed Report</p>
+                                        <p className="text-3xl font-bold my-2">$499</p>
+                                        <ul className="text-sm text-blue-100 space-y-1 mb-4">
+                                            <li>✓ Everything in Standard</li>
+                                            <li>✓ PE stamp (TX/CO)</li>
+                                            <li>✓ 48-72 hour delivery</li>
+                                        </ul>
+                                        <a href="mailto:info@franceng.com?subject=PSV%20PE-Reviewed%20Report%20Request"
+                                           className="block text-center py-2 bg-yellow-400 text-blue-900 rounded-lg font-medium hover:bg-yellow-300 transition">
+                                            Request Quote
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Back Button */}
+                            <div className="flex justify-between">
+                                <button onClick={() => setStep(1)} className="px-6 py-2 border bg-white rounded-lg font-medium hover:bg-gray-50 transition">
+                                    ← Start Over
+                                </button>
+                                <button onClick={() => setStep(3)} className="px-6 py-2 border bg-white rounded-lg font-medium hover:bg-gray-50 transition">
+                                    ← Modify Scenario
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Footer */}
+                    <div className="mt-8 text-center text-sm text-gray-500">
+                        <p>Calculations per API 520/521. For screening purposes only.</p>
+                        <p className="mt-1">© 2024 Franc Engineering | <a href="https://franceng.com" className="hover:underline">franceng.com</a></p>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<PSVCalculator />, document.getElementById('root'));
+    </script>
+</body>
+</html>
