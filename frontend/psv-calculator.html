@@ -24,6 +24,9 @@
         .fade-in { animation: fadeIn 0.3s ease-in; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         input::placeholder { color: #9ca3af; }
+        .file-upload { border: 2px dashed #d1d5db; transition: all 0.2s ease; }
+        .file-upload:hover { border-color: #2563eb; background-color: #f8fafc; }
+        .file-upload.has-file { border-color: #22c55e; background-color: #f0fdf4; }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
@@ -65,16 +68,19 @@
             ngl: { name: 'NGL', composition: { ethane: 40, propane: 30, isobutane: 10, nbutane: 10, npentane: 10 }},
         };
 
-        // API 526 Orifices with inlet/outlet sizes
+        // API 526 Orifices with inlet/outlet sizes (including alternate sizes)
         const ORIFICES = [
             { letter: 'D', area: 0.110, inlet: '1"', outlet: '2"', size: '1 D 2' },
             { letter: 'E', area: 0.196, inlet: '1"', outlet: '2"', size: '1 E 2' },
             { letter: 'F', area: 0.307, inlet: '1.5"', outlet: '2"', size: '1½ F 2' },
             { letter: 'G', area: 0.503, inlet: '1.5"', outlet: '3"', size: '1½ G 3' },
+            { letter: 'G', area: 0.503, inlet: '2"', outlet: '3"', size: '2 G 3' },
             { letter: 'H', area: 0.785, inlet: '1.5"', outlet: '3"', size: '1½ H 3' },
+            { letter: 'H', area: 0.785, inlet: '2"', outlet: '3"', size: '2 H 3' },
             { letter: 'J', area: 1.287, inlet: '2"', outlet: '3"', size: '2 J 3' },
             { letter: 'K', area: 1.838, inlet: '3"', outlet: '4"', size: '3 K 4' },
             { letter: 'L', area: 2.853, inlet: '3"', outlet: '4"', size: '3 L 4' },
+            { letter: 'L', area: 2.853, inlet: '4"', outlet: '6"', size: '4 L 6' },
             { letter: 'M', area: 3.600, inlet: '4"', outlet: '6"', size: '4 M 6' },
             { letter: 'N', area: 4.340, inlet: '4"', outlet: '6"', size: '4 N 6' },
             { letter: 'P', area: 6.380, inlet: '4"', outlet: '6"', size: '4 P 6' },
@@ -83,13 +89,12 @@
             { letter: 'T', area: 26.00, inlet: '8"', outlet: '10"', size: '8 T 10' },
         ];
 
-        // Scenarios
+        // Scenarios - Updated per user request
         const SCENARIOS = [
-            { id: 'fire_wetted', name: 'Fire - Wetted', icon: '🔥', desc: 'Pool fire on vessel with liquid inventory' },
-            { id: 'fire_unwetted', name: 'Fire - Unwetted', icon: '💨', desc: 'Fire exposure on vapor space' },
-            { id: 'blocked_vapor', name: 'Blocked Vapor', icon: '⛔', desc: 'Blocked vapor outlet with upstream source' },
-            { id: 'blocked_liquid', name: 'Blocked Liquid', icon: '🚫', desc: 'Blocked liquid outlet, thermal expansion' },
-            { id: 'cv_failure', name: 'CV Failure', icon: '⚠️', desc: 'Control valve fails open' },
+            { id: 'fire_wetted', name: 'Fire-Wetted (Liquid Boil up)', icon: '🔥', desc: 'Pool fire on vessel with liquid inventory causing vaporization' },
+            { id: 'fire_unwetted', name: 'Fire Unwetted (Vapor)', icon: '💨', desc: 'Fire exposure on vapor space only' },
+            { id: 'blocked_vapor', name: 'Blocked Outlet - Vapor', icon: '⛔', desc: 'Blocked vapor outlet with upstream source' },
+            { id: 'cv_failure', name: 'CV Failure - Vapor', icon: '⚠️', desc: 'Control valve fails open, vapor service' },
         ];
 
         // Simplified Peng-Robinson calculations (client-side)
@@ -110,13 +115,11 @@
                 }
             });
 
-            // Normalize and calculate MW
             compData.forEach(c => {
                 c.z = c.z / totalMol;
                 mw += c.z * c.mw;
             });
 
-            // Simplified Z calculation (SRK-like)
             let a_mix = 0, b_mix = 0;
             compData.forEach(c => {
                 const Tr = T_K / c.tc;
@@ -132,7 +135,6 @@
             const A = a_mix * P_Pa / (R * R * T_K * T_K);
             const B = b_mix * P_Pa / (R * T_K);
 
-            // Solve cubic for Z (simplified - take largest root for vapor)
             let Z = 1.0;
             for (let i = 0; i < 20; i++) {
                 const Z_new = 1 + B - A * B / (Z * (Z + B));
@@ -141,13 +143,9 @@
             }
             Z = Math.max(0.1, Math.min(Z, 1.5));
 
-            // Calculate gamma (Cp/Cv)
             const gamma = 1.1 + 0.05 * (50 / mw);
-
-            // Calculate density
             const density = P_Pa * (mw / 1000) / (Z * R * T_K);
 
-            // LFL/UFL using Le Chatelier
             let lfl_inv = 0, ufl_inv = 0, flammable_total = 0;
             compData.forEach(c => {
                 if (c.lfl && c.lfl > 0) {
@@ -163,7 +161,6 @@
             return { mw, Z, gamma, density, lfl, ufl };
         }
 
-        // Fire heat input calculation
         function fireHeatInput(wetted_area_ft2, insulated = false) {
             const F = insulated ? 0.3 : 1.0;
             if (wetted_area_ft2 <= 2800) {
@@ -172,7 +169,6 @@
             return 34500 * F * Math.pow(wetted_area_ft2, 0.82);
         }
 
-        // Wetted area for horizontal vessel
         function wettedAreaHorizontal(diameter_ft, length_ft, liquid_fraction) {
             const R = diameter_ft / 2;
             const h = liquid_fraction * diameter_ft;
@@ -184,7 +180,6 @@
             return shell + heads;
         }
 
-        // PSV sizing calculation
         function sizePSV(scenario, props, conditions, vessel) {
             const { mw, Z, gamma } = props;
             const { set_pressure, back_pressure, temperature, latent_heat, flow_rate } = conditions;
@@ -210,15 +205,11 @@
                 wetted_area = null;
             }
 
-            // Calculate C coefficient
             const C = 520 * Math.sqrt(gamma * Math.pow(2 / (gamma + 1), (gamma + 1) / (gamma - 1)));
-
-            // Critical pressure ratio
             const P_crit = Math.pow(2 / (gamma + 1), gamma / (gamma - 1));
             const P_ratio = P2_psia / P1_psia;
             const isCritical = P_ratio <= P_crit;
 
-            // Calculate required area
             let A_required;
             if (isCritical) {
                 A_required = (W_lb_hr / (C * 0.975 * P1_psia)) * Math.sqrt(T_R * Z / mw);
@@ -229,9 +220,12 @@
                 A_required = (W_lb_hr / (735 * F2 * 0.975)) * Math.sqrt(T_R * Z / (mw * P1_psia * P2_psia));
             }
 
-            // Select orifice
-            let selectedOrifice = ORIFICES[ORIFICES.length - 1];
-            for (const o of ORIFICES) {
+            // Select orifice (use unique letters for calculation)
+            const uniqueOrifices = ORIFICES.filter((o, i, arr) =>
+                arr.findIndex(x => x.letter === o.letter) === i
+            );
+            let selectedOrifice = uniqueOrifices[uniqueOrifices.length - 1];
+            for (const o of uniqueOrifices) {
                 if (o.area >= A_required) {
                     selectedOrifice = o;
                     break;
@@ -257,6 +251,43 @@
             };
         }
 
+        // File Upload Component
+        function FileUpload({ label, accept, file, onFileChange }) {
+            const handleChange = (e) => {
+                const selectedFile = e.target.files[0];
+                if (selectedFile) {
+                    onFileChange(selectedFile);
+                }
+            };
+
+            return (
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+                    <label className={`file-upload block p-4 rounded-lg cursor-pointer text-center ${file ? 'has-file' : ''}`}>
+                        <input
+                            type="file"
+                            accept={accept}
+                            onChange={handleChange}
+                            className="hidden"
+                        />
+                        {file ? (
+                            <div className="text-green-700">
+                                <span className="font-medium">{file.name}</span>
+                                <p className="text-xs mt-1">Click to replace</p>
+                            </div>
+                        ) : (
+                            <div className="text-gray-500">
+                                <svg className="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                </svg>
+                                <span className="text-sm">Click to upload</span>
+                            </div>
+                        )}
+                    </label>
+                </div>
+            );
+        }
+
         // Main App Component
         function PSVCalculator() {
             const [step, setStep] = useState(1);
@@ -272,6 +303,10 @@
                 mawp: '',
                 set_pressure: '',
             });
+
+            // File uploads
+            const [pidFile, setPidFile] = useState(null);
+            const [miscFile, setMiscFile] = useState(null);
 
             const [preset, setPreset] = useState('');
             const [composition, setComposition] = useState({});
@@ -293,7 +328,6 @@
             const [scenario, setScenario] = useState('fire_wetted');
             const [results, setResults] = useState(null);
 
-            // Handle preset selection
             const handlePresetChange = (presetId) => {
                 setPreset(presetId);
                 if (PRESETS[presetId]) {
@@ -301,7 +335,6 @@
                 }
             };
 
-            // Handle composition change
             const handleCompChange = (comp, value) => {
                 setComposition(prev => ({
                     ...prev,
@@ -309,7 +342,6 @@
                 }));
             };
 
-            // Calculate results
             const calculate = () => {
                 const T_F = conditions.tempUnit === 'C' ? conditions.temperature * 9/5 + 32 :
                             conditions.tempUnit === 'K' ? (conditions.temperature - 273.15) * 9/5 + 32 :
@@ -335,7 +367,8 @@
 
             const totalMol = Object.values(composition).reduce((a, b) => a + (b || 0), 0);
 
-            const STEP_LABELS = ['Device', 'Fluid', 'Conditions', 'Scenario', 'Results'];
+            // Updated step order: Device -> Scenario -> Fluid -> Conditions -> Results
+            const STEP_LABELS = ['Device', 'Scenario', 'Fluid', 'Conditions', 'Results'];
 
             return (
                 <div className="max-w-4xl mx-auto p-4 sm:p-6">
@@ -414,17 +447,17 @@
                                     />
                                 </div>
 
-                                {/* Relief Device Selection (API Orifice) */}
+                                {/* Relief Device Selection (API Sizes) */}
                                 <div className="sm:col-span-2">
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Relief Device Selection (if known)</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Relief Device Selection (API Sizes)</label>
                                     <select
                                         value={deviceInfo.selected_orifice}
                                         onChange={(e) => setDeviceInfo({...deviceInfo, selected_orifice: e.target.value})}
                                         className="w-full px-3 py-2 border rounded-lg bg-white focus:outline-none focus:border-blue-500"
                                     >
                                         <option value="">-- Calculate Required Size --</option>
-                                        {ORIFICES.map((o) => (
-                                            <option key={o.letter} value={o.letter}>
+                                        {ORIFICES.map((o, idx) => (
+                                            <option key={`${o.letter}-${o.size}-${idx}`} value={o.size}>
                                                 {o.size} — Orifice {o.letter} ({o.area} in²) — Inlet: {o.inlet}, Outlet: {o.outlet}
                                             </option>
                                         ))}
@@ -455,6 +488,7 @@
                                     >
                                         <option value="atmosphere">Atmosphere</option>
                                         <option value="flare">Flare</option>
+                                        <option value="process">Process</option>
                                     </select>
                                 </div>
 
@@ -482,6 +516,21 @@
                                     />
                                     <p className="text-xs text-gray-500 mt-1">Typically equal to or less than MAWP</p>
                                 </div>
+
+                                {/* File Uploads */}
+                                <FileUpload
+                                    label="P&ID Upload (PDF)"
+                                    accept=".pdf"
+                                    file={pidFile}
+                                    onFileChange={setPidFile}
+                                />
+
+                                <FileUpload
+                                    label="Miscellaneous"
+                                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                                    file={miscFile}
+                                    onFileChange={setMiscFile}
+                                />
                             </div>
 
                             <div className="flex justify-end mt-6">
@@ -489,14 +538,44 @@
                                     onClick={() => setStep(2)}
                                     className="px-6 py-2 franc-accent-bg text-white rounded-lg font-medium hover:bg-blue-700 transition"
                                 >
+                                    Next: Scenario →
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Step 2: Scenario Selection (moved from Step 4) */}
+                    {step === 2 && (
+                        <div className="fade-in bg-white rounded-xl shadow-lg p-6">
+                            <h2 className="text-xl font-semibold mb-4">Scenario Identification</h2>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {SCENARIOS.map((s) => (
+                                    <div
+                                        key={s.id}
+                                        className={`scenario-card p-4 border-2 rounded-xl cursor-pointer ${scenario === s.id ? 'selected' : 'border-gray-200'}`}
+                                        onClick={() => setScenario(s.id)}
+                                    >
+                                        <div className="text-3xl mb-2">{s.icon}</div>
+                                        <h3 className="font-semibold">{s.name}</h3>
+                                        <p className="text-sm text-gray-600 mt-1">{s.desc}</p>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="flex justify-between mt-6">
+                                <button onClick={() => setStep(1)} className="px-6 py-2 border rounded-lg font-medium hover:bg-gray-50 transition">
+                                    ← Back
+                                </button>
+                                <button onClick={() => setStep(3)} className="px-6 py-2 franc-accent-bg text-white rounded-lg font-medium hover:bg-blue-700 transition">
                                     Next: Fluid →
                                 </button>
                             </div>
                         </div>
                     )}
 
-                    {/* Step 2: Fluid Selection */}
-                    {step === 2 && (
+                    {/* Step 3: Fluid Selection */}
+                    {step === 3 && (
                         <div className="fade-in bg-white rounded-xl shadow-lg p-6">
                             <h2 className="text-xl font-semibold mb-4">Select Fluid</h2>
 
@@ -545,11 +624,11 @@
                             </div>
 
                             <div className="flex justify-between mt-6">
-                                <button onClick={() => setStep(1)} className="px-6 py-2 border rounded-lg font-medium hover:bg-gray-50 transition">
+                                <button onClick={() => setStep(2)} className="px-6 py-2 border rounded-lg font-medium hover:bg-gray-50 transition">
                                     ← Back
                                 </button>
                                 <button
-                                    onClick={() => setStep(3)}
+                                    onClick={() => setStep(4)}
                                     disabled={totalMol < 99}
                                     className="px-6 py-2 franc-accent-bg text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
                                 >
@@ -559,8 +638,8 @@
                         </div>
                     )}
 
-                    {/* Step 3: Operating Conditions */}
-                    {step === 3 && (
+                    {/* Step 4: Operating Conditions */}
+                    {step === 4 && (
                         <div className="fade-in bg-white rounded-xl shadow-lg p-6">
                             <h2 className="text-xl font-semibold mb-4">Operating Conditions</h2>
 
@@ -646,82 +725,54 @@
                                 </div>
                             </div>
 
-                            {/* Vessel Dimensions */}
-                            <div className="mt-6 pt-6 border-t">
-                                <h3 className="font-medium mb-3">Vessel Dimensions (for fire cases)</h3>
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                                    <div>
-                                        <label className="block text-xs text-gray-600 mb-1">Diameter (ft)</label>
-                                        <input
-                                            type="number"
-                                            value={vessel.diameter}
-                                            onChange={(e) => setVessel({...vessel, diameter: parseFloat(e.target.value)})}
-                                            className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs text-gray-600 mb-1">Length (ft)</label>
-                                        <input
-                                            type="number"
-                                            value={vessel.length}
-                                            onChange={(e) => setVessel({...vessel, length: parseFloat(e.target.value)})}
-                                            className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs text-gray-600 mb-1">Liquid Level (%)</label>
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            max="100"
-                                            value={vessel.liquid_level * 100}
-                                            onChange={(e) => setVessel({...vessel, liquid_level: parseFloat(e.target.value) / 100})}
-                                            className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
-                                        />
-                                    </div>
-                                    <div className="flex items-center">
-                                        <label className="flex items-center space-x-2 cursor-pointer">
+                            {/* Vessel Dimensions - only show for fire scenarios */}
+                            {(scenario === 'fire_wetted' || scenario === 'fire_unwetted') && (
+                                <div className="mt-6 pt-6 border-t">
+                                    <h3 className="font-medium mb-3">Vessel Dimensions (for fire cases)</h3>
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                        <div>
+                                            <label className="block text-xs text-gray-600 mb-1">Diameter (ft)</label>
                                             <input
-                                                type="checkbox"
-                                                checked={vessel.insulated}
-                                                onChange={(e) => setVessel({...vessel, insulated: e.target.checked})}
-                                                className="w-4 h-4 rounded"
+                                                type="number"
+                                                value={vessel.diameter}
+                                                onChange={(e) => setVessel({...vessel, diameter: parseFloat(e.target.value)})}
+                                                className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
                                             />
-                                            <span className="text-sm">Insulated</span>
-                                        </label>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs text-gray-600 mb-1">Length (ft)</label>
+                                            <input
+                                                type="number"
+                                                value={vessel.length}
+                                                onChange={(e) => setVessel({...vessel, length: parseFloat(e.target.value)})}
+                                                className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs text-gray-600 mb-1">Liquid Level (%)</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                value={vessel.liquid_level * 100}
+                                                onChange={(e) => setVessel({...vessel, liquid_level: parseFloat(e.target.value) / 100})}
+                                                className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                            />
+                                        </div>
+                                        <div className="flex items-center">
+                                            <label className="flex items-center space-x-2 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={vessel.insulated}
+                                                    onChange={(e) => setVessel({...vessel, insulated: e.target.checked})}
+                                                    className="w-4 h-4 rounded"
+                                                />
+                                                <span className="text-sm">Insulated</span>
+                                            </label>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-
-                            <div className="flex justify-between mt-6">
-                                <button onClick={() => setStep(2)} className="px-6 py-2 border rounded-lg font-medium hover:bg-gray-50 transition">
-                                    ← Back
-                                </button>
-                                <button onClick={() => setStep(4)} className="px-6 py-2 franc-accent-bg text-white rounded-lg font-medium hover:bg-blue-700 transition">
-                                    Next: Scenario →
-                                </button>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Step 4: Scenario Selection */}
-                    {step === 4 && (
-                        <div className="fade-in bg-white rounded-xl shadow-lg p-6">
-                            <h2 className="text-xl font-semibold mb-4">Select Relief Scenario</h2>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {SCENARIOS.map((s) => (
-                                    <div
-                                        key={s.id}
-                                        className={`scenario-card p-4 border-2 rounded-xl cursor-pointer ${scenario === s.id ? 'selected' : 'border-gray-200'}`}
-                                        onClick={() => setScenario(s.id)}
-                                    >
-                                        <div className="text-3xl mb-2">{s.icon}</div>
-                                        <h3 className="font-semibold">{s.name}</h3>
-                                        <p className="text-sm text-gray-600 mt-1">{s.desc}</p>
-                                    </div>
-                                ))}
-                            </div>
+                            )}
 
                             <div className="flex justify-between mt-6">
                                 <button onClick={() => setStep(3)} className="px-6 py-2 border rounded-lg font-medium hover:bg-gray-50 transition">
@@ -867,7 +918,7 @@
                                     ← Start Over
                                 </button>
                                 <button onClick={() => setStep(4)} className="px-6 py-2 border bg-white rounded-lg font-medium hover:bg-gray-50 transition">
-                                    ← Modify Scenario
+                                    ← Modify Conditions
                                 </button>
                             </div>
                         </div>
