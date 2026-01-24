@@ -955,12 +955,13 @@
                                 const comp = compositions.fire_unwetted || {};
                                 const cond = scenarioConditions.fire_unwetted;
                                 const setP = parseFloat(deviceInfo.set_pressure) || 0;
-                                const p1 = setP * (1 + FIRE_OVERPRESSURE) + AMBIENT_PRESSURE;
+                                const p1_psia = setP * (1 + FIRE_OVERPRESSURE) + AMBIENT_PRESSURE;
+                                const p1_psig = setP * (1 + FIRE_OVERPRESSURE);
                                 const M = getMolecularWeight(comp);
                                 const Pcrit = getCriticalPressure(comp);
-                                const T1 = calcRelievingTemp(p1, cond.normal_op_pressure, cond.normal_op_temp);
-                                const qRelief = calcFireUnwettedReliefLoad(M, p1, cond.unwetted_area, MAX_WALL_TEMP, T1);
-                                const qVol = calcVolumetricRate(qRelief, M, T1, p1);
+                                const T1 = calcRelievingTemp(p1_psia, cond.normal_op_pressure, cond.normal_op_temp);
+                                const qRelief = calcFireUnwettedReliefLoad(M, p1_psia, cond.unwetted_area, MAX_WALL_TEMP, T1);
+                                const qVol = calcVolumetricRate(qRelief, M, T1, p1_psia);
 
                                 return (
                                     <div className="bg-white rounded-xl shadow-lg p-6">
@@ -981,73 +982,57 @@
                                             <p className="text-xs text-gray-500">Vessel geometry inputs will be added here</p>
                                         </div>
 
-                                        <div className="space-y-3">
-                                            {/* Ambient Pressure - Output */}
-                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                                                <span className="text-sm text-gray-700">Ambient Pressure</span>
-                                                <div className="flex items-center space-x-2">
-                                                    <input type="text" value={AMBIENT_PRESSURE.toFixed(2)} readOnly
-                                                        className="w-24 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-sm text-right text-blue-800" />
-                                                    <span className="text-xs text-gray-500 w-12">psia</span>
-                                                </div>
-                                            </div>
-
-                                            {/* Relief Device Set Pressure - Output (from Step 1) */}
+                                        <div className="space-y-2">
+                                            {/* Relief Device Set Pressure - Display */}
                                             <div className="flex items-center justify-between py-2 border-b border-gray-100">
                                                 <span className="text-sm text-gray-700">Relief Device Set Pressure</span>
                                                 <div className="flex items-center space-x-2">
-                                                    <input type="text" value={setP || '-'} readOnly
-                                                        className="w-24 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-sm text-right text-blue-800" />
+                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{setP || '-'}</span>
                                                     <span className="text-xs text-gray-500 w-12">psig</span>
                                                 </div>
                                             </div>
 
-                                            {/* Allowable Overpressure - Output */}
+                                            {/* Allowable Overpressure - Display */}
                                             <div className="flex items-center justify-between py-2 border-b border-gray-100">
                                                 <span className="text-sm text-gray-700">Allowable Overpressure</span>
                                                 <div className="flex items-center space-x-2">
-                                                    <input type="text" value="21%" readOnly
-                                                        className="w-24 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-sm text-right text-blue-800" />
+                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">21%</span>
                                                     <span className="text-xs text-gray-500 w-12"></span>
                                                 </div>
                                             </div>
 
-                                            {/* Absolute Relieving Pressure - Output */}
+                                            {/* Relieving Pressure - Display (in psig) */}
                                             <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                                                <span className="text-sm text-gray-700">Absolute Relieving Pressure (p₁)</span>
+                                                <span className="text-sm text-gray-700">Relieving Pressure (p₁)</span>
                                                 <div className="flex items-center space-x-2">
-                                                    <input type="text" value={p1 > 0 ? p1.toFixed(1) : '-'} readOnly
-                                                        className="w-24 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-sm text-right text-blue-800" />
-                                                    <span className="text-xs text-gray-500 w-12">psia</span>
+                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{p1_psig > 0 ? p1_psig.toFixed(1) : '-'}</span>
+                                                    <span className="text-xs text-gray-500 w-12">psig</span>
                                                 </div>
                                             </div>
 
-                                            {/* Critical Pressure - Output (from composition) */}
+                                            {/* Critical Pressure - Display (from composition) */}
                                             <div className="flex items-center justify-between py-2 border-b border-gray-100">
                                                 <span className="text-sm text-gray-700">Critical Pressure (P<sub>CRIT</sub>)</span>
                                                 <div className="flex items-center space-x-2">
-                                                    <input type="text" value={Pcrit > 0 ? Pcrit.toFixed(0) : '-'} readOnly
-                                                        className="w-24 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-sm text-right text-blue-800" />
+                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{Pcrit > 0 ? Pcrit.toFixed(0) : '-'}</span>
                                                     <span className="text-xs text-gray-500 w-12">psia</span>
                                                 </div>
                                             </div>
 
-                                            {/* Vapor Molecular Weight - Output (from composition) */}
+                                            {/* Vapor Molecular Weight - Display (from composition) */}
                                             <div className="flex items-center justify-between py-2 border-b border-gray-100">
                                                 <span className="text-sm text-gray-700">Vapor Molecular Weight (M)</span>
                                                 <div className="flex items-center space-x-2">
-                                                    <input type="text" value={M > 0 ? M.toFixed(1) : '-'} readOnly
-                                                        className="w-24 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-sm text-right text-blue-800" />
+                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{M > 0 ? M.toFixed(1) : '-'}</span>
                                                     <span className="text-xs text-gray-500 w-12"></span>
                                                 </div>
                                             </div>
 
-                                            {/* Maximum Wall Temperature - Output (fixed) */}
+                                            {/* Maximum Wall Temperature - Display (fixed) */}
                                             <div className="flex items-center justify-between py-2 border-b border-gray-100">
                                                 <span className="text-sm text-gray-700">Maximum Wall Temperature (T<sub>W</sub>)</span>
                                                 <div className="flex items-center space-x-2">
-                                                    <input type="text" value={MAX_WALL_TEMP.toLocaleString()} readOnly
-                                                        className="w-24 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-sm text-right text-blue-800" />
+                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{MAX_WALL_TEMP.toLocaleString()}</span>
                                                     <span className="text-xs text-gray-500 w-12">°F</span>
                                                 </div>
                                             </div>
@@ -1085,32 +1070,29 @@
                                                 </div>
                                             </div>
 
-                                            {/* Relieving Temperature - Output */}
+                                            {/* Relieving Temperature - Display */}
                                             <div className="flex items-center justify-between py-2 border-b border-gray-100">
                                                 <span className="text-sm text-gray-700">Relieving Temperature (T₁)</span>
                                                 <div className="flex items-center space-x-2">
-                                                    <input type="text" value={T1 > 0 ? T1.toFixed(0) : '-'} readOnly
-                                                        className="w-24 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-sm text-right text-blue-800" />
+                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{T1 > 0 ? T1.toFixed(0) : '-'}</span>
                                                     <span className="text-xs text-gray-500 w-12">°F</span>
                                                 </div>
                                             </div>
 
-                                            {/* Relief Load - Output */}
-                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                                                <span className="text-sm text-gray-700">Relief Load (q<sub>m,relief</sub>)</span>
+                                            {/* Relief Load - Display (highlighted) */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100 bg-red-50 -mx-2 px-2 rounded">
+                                                <span className="text-sm font-medium text-gray-700">Relief Load (q<sub>m,relief</sub>)</span>
                                                 <div className="flex items-center space-x-2">
-                                                    <input type="text" value={qRelief > 0 ? qRelief.toFixed(0) : '-'} readOnly
-                                                        className="w-24 px-3 py-1.5 bg-red-50 border border-red-200 rounded text-sm text-right text-red-800 font-medium" />
+                                                    <span className="text-sm font-bold text-red-700 w-24 text-right">{qRelief > 0 ? qRelief.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'}</span>
                                                     <span className="text-xs text-gray-500 w-12">lb/hr</span>
                                                 </div>
                                             </div>
 
-                                            {/* Volumetric Relieving Rate - Output */}
-                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                                                <span className="text-sm text-gray-700">Required Volumetric Relieving Rate</span>
+                                            {/* Volumetric Relieving Rate - Display (highlighted) */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100 bg-red-50 -mx-2 px-2 rounded">
+                                                <span className="text-sm font-medium text-gray-700">Required Volumetric Relieving Rate</span>
                                                 <div className="flex items-center space-x-2">
-                                                    <input type="text" value={qVol > 0 ? qVol.toFixed(3) : '-'} readOnly
-                                                        className="w-24 px-3 py-1.5 bg-red-50 border border-red-200 rounded text-sm text-right text-red-800 font-medium" />
+                                                    <span className="text-sm font-bold text-red-700 w-24 text-right">{qVol > 0 ? qVol.toFixed(3) : '-'}</span>
                                                     <span className="text-xs text-gray-500 w-12">MMscfd</span>
                                                 </div>
                                             </div>
