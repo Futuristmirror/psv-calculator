@@ -619,35 +619,105 @@
             };
 
             const calculate = () => {
-                const T_F = conditions.tempUnit === 'C' ? conditions.temperature * 9/5 + 32 :
-                            conditions.tempUnit === 'K' ? (conditions.temperature - 273.15) * 9/5 + 32 :
-                            conditions.temperature;
+                const setP = parseFloat(deviceInfo.set_pressure) || 0;
+                const selectedOrificeSize = deviceInfo.selected_orifice;
+                const selectedOrifice = ORIFICES.find(o => o.size === selectedOrificeSize);
+                const ratedArea = selectedOrifice ? selectedOrifice.area : 0;
 
-                const P_psig = conditions.pressureUnit === 'psia' ? conditions.pressure - 14.7 :
-                               conditions.pressureUnit === 'bar' ? conditions.pressure * 14.5038 - 14.7 :
-                               conditions.pressureUnit === 'kPa' ? conditions.pressure * 0.145038 - 14.7 :
-                               conditions.pressure;
+                // Calculate results for each applicable scenario
+                const scenarioResults = {};
+                let controllingScenario = null;
+                let maxRequiredArea = 0;
 
-                // Use composition for the selected scenario
-                const scenarioComp = compositions[scenario] || {};
-                const props = calculateProperties(scenarioComp, T_F, P_psig);
-                const sizing = sizePSV(scenario, props, {
-                    set_pressure: parseFloat(deviceInfo.set_pressure) || 150,
-                    back_pressure: conditions.back_pressure,
-                    temperature: T_F,
-                    latent_heat: conditions.latent_heat,
-                    flow_rate: conditions.flow_rate,
-                }, vessel);
+                // Fire Unwetted (1B)
+                if (scenarioSelections.fire_unwetted?.applicable) {
+                    const comp = compositions.fire_unwetted || {};
+                    const cond = scenarioConditions.fire_unwetted;
+                    const p1_psia = setP * (1 + FIRE_OVERPRESSURE) + AMBIENT_PRESSURE;
+                    const M = getMolecularWeight(comp);
+                    const T1 = calcRelievingTemp(p1_psia, cond.normal_op_pressure, cond.normal_op_temp);
+                    const vesselAreas = calcVesselAreas({ ...vesselDetails, max_liquid_level: 0 });
+                    const qRelief = calcFireUnwettedReliefLoad(M, p1_psia, vesselAreas.adjustedUnwetted, MAX_WALL_TEMP, T1);
+                    const T1_R = T1 + 459.67;
+                    const k = getSpecificHeatRatio(comp);
+                    const C = getAPI520_C(k);
+                    const requiredArea = qRelief > 0 && M > 0 && p1_psia > 0
+                        ? (qRelief * Math.sqrt(T1_R * 1.0)) / (C * 0.975 * p1_psia * 1.0 * 1.0 * Math.sqrt(M))
+                        : 0;
+                    const ratedLoad = ratedArea > 0 && M > 0 && p1_psia > 0
+                        ? (ratedArea * C * 0.975 * p1_psia * 1.0 * 1.0 * Math.sqrt(M)) / Math.sqrt(T1_R * 1.0)
+                        : 0;
+                    scenarioResults.fire_unwetted = {
+                        applicable: true, label: '1B', name: 'Fire-Unwetted',
+                        requiredFlow: qRelief, ratedFlow: ratedLoad, requiredArea, ratedArea,
+                        adequate: ratedArea >= requiredArea
+                    };
+                    if (requiredArea > maxRequiredArea) { maxRequiredArea = requiredArea; controllingScenario = 'fire_unwetted'; }
+                }
 
-                setResults({ ...props, ...sizing, deviceInfo, compositions });
+                // Blocked Outlet (2A)
+                if (scenarioSelections.blocked_vapor?.applicable) {
+                    const comp = compositions.blocked_vapor || {};
+                    const cond = scenarioConditions.blocked_vapor;
+                    const p1_psia = setP * 1.10 + AMBIENT_PRESSURE;
+                    const M = getMolecularWeight(comp);
+                    const T1 = cond.normal_op_temp;
+                    const T1_R = T1 + 459.67;
+                    const k = getSpecificHeatRatio(comp);
+                    const C = getAPI520_C(k);
+                    const flowRateInput = parseFloat(cond.flow_rate) || 0;
+                    const qRelief = cond.flow_rate_unit === 'mmscfd'
+                        ? (flowRateInput * 1e6 * M) / (379.5 * 24)
+                        : flowRateInput;
+                    const requiredArea = qRelief > 0 && M > 0 && p1_psia > 0
+                        ? (qRelief * Math.sqrt(T1_R * 1.0)) / (C * 0.975 * p1_psia * 1.0 * 1.0 * Math.sqrt(M))
+                        : 0;
+                    const ratedLoad = ratedArea > 0 && M > 0 && p1_psia > 0
+                        ? (ratedArea * C * 0.975 * p1_psia * 1.0 * 1.0 * Math.sqrt(M)) / Math.sqrt(T1_R * 1.0)
+                        : 0;
+                    scenarioResults.blocked_vapor = {
+                        applicable: true, label: '2A', name: 'Blocked Outlet',
+                        requiredFlow: qRelief, ratedFlow: ratedLoad, requiredArea, ratedArea,
+                        adequate: ratedArea >= requiredArea
+                    };
+                    if (requiredArea > maxRequiredArea) { maxRequiredArea = requiredArea; controllingScenario = 'blocked_vapor'; }
+                }
+
+                // Fire Wetted (1A) - placeholder
+                if (scenarioSelections.fire_wetted?.applicable) {
+                    scenarioResults.fire_wetted = {
+                        applicable: true, label: '1A', name: 'Fire-Wetted',
+                        requiredFlow: 0, ratedFlow: 0, requiredArea: 0, ratedArea,
+                        adequate: true, placeholder: true
+                    };
+                }
+
+                // CV Failure (3) - placeholder
+                if (scenarioSelections.cv_failure?.applicable) {
+                    scenarioResults.cv_failure = {
+                        applicable: true, label: '3', name: 'CV Failure',
+                        requiredFlow: 0, ratedFlow: 0, requiredArea: 0, ratedArea,
+                        adequate: true, placeholder: true
+                    };
+                }
+
+                setResults({
+                    deviceInfo,
+                    selectedOrifice,
+                    ratedArea,
+                    scenarioResults,
+                    controllingScenario,
+                    maxRequiredArea,
+                    vesselDetails
+                });
                 setStep(5);
             };
 
             // Check if all applicable scenarios have valid compositions (>=99%)
             const allCompositionsValid = applicableScenarios.every(s => getTotalMol(s.id) >= 99);
 
-            // Updated step order: Device -> Scenario -> Fluid -> Conditions -> Results
-            const STEP_LABELS = ['Device', 'Scenario', 'Fluid', 'Conditions', 'Results'];
+            // Updated step order: Device -> Scenario -> Fluid -> Calcs -> Results
+            const STEP_LABELS = ['Device', 'Scenario', 'Fluid', 'Calcs', 'Results'];
 
             return (
                 <div className="max-w-4xl mx-auto p-4 sm:p-6">
@@ -1057,7 +1127,7 @@
                                     disabled={!allCompositionsValid}
                                     className="px-6 py-2 franc-accent-bg text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
                                 >
-                                    Next: Conditions →
+                                    Next: Calcs →
                                 </button>
                             </div>
                             {!allCompositionsValid && (
@@ -1673,17 +1743,30 @@
                                         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                                             <h4 className="font-medium text-green-800 mb-3">Relieving Rate (Input)</h4>
                                             <div className="flex items-center space-x-4">
-                                                <div className="flex items-center space-x-2">
-                                                    <select value={cond.flow_rate_unit}
-                                                        onChange={(e) => updateScenarioCondition('blocked_vapor', 'flow_rate_unit', e.target.value)}
-                                                        className="px-3 py-1.5 bg-white border border-green-300 rounded text-sm focus:outline-none focus:border-green-500 cursor-pointer">
-                                                        <option value="lb_hr">lb/hr</option>
-                                                        <option value="mmscfd">MMscfd</option>
-                                                    </select>
-                                                    <input type="number" value={cond.flow_rate}
-                                                        onChange={(e) => updateScenarioCondition('blocked_vapor', 'flow_rate', e.target.value)}
-                                                        className="w-28 px-3 py-1.5 bg-white border border-green-300 rounded text-sm text-right focus:outline-none focus:border-green-500" />
+                                                {/* Toggle Buttons */}
+                                                <div className="flex rounded-lg overflow-hidden border border-green-300">
+                                                    <button type="button"
+                                                        onClick={() => updateScenarioCondition('blocked_vapor', 'flow_rate_unit', 'lb_hr')}
+                                                        className={`px-3 py-1.5 text-sm font-medium transition ${
+                                                            cond.flow_rate_unit === 'lb_hr'
+                                                                ? 'bg-green-600 text-white'
+                                                                : 'bg-white text-gray-600 hover:bg-gray-50'
+                                                        }`}>
+                                                        lb/hr
+                                                    </button>
+                                                    <button type="button"
+                                                        onClick={() => updateScenarioCondition('blocked_vapor', 'flow_rate_unit', 'mmscfd')}
+                                                        className={`px-3 py-1.5 text-sm font-medium transition ${
+                                                            cond.flow_rate_unit === 'mmscfd'
+                                                                ? 'bg-green-600 text-white'
+                                                                : 'bg-white text-gray-600 hover:bg-gray-50'
+                                                        }`}>
+                                                        MMscfd
+                                                    </button>
                                                 </div>
+                                                <input type="number" value={cond.flow_rate}
+                                                    onChange={(e) => updateScenarioCondition('blocked_vapor', 'flow_rate', e.target.value)}
+                                                    className="w-28 px-3 py-1.5 bg-white border border-green-300 rounded text-sm text-right focus:outline-none focus:border-green-500" />
                                                 <span className="text-sm text-gray-400">
                                                     {cond.flow_rate_unit === 'lb_hr'
                                                         ? `= ${qRelief_mmscfd > 0 ? qRelief_mmscfd.toFixed(2) : '-'} MMscfd`
@@ -1739,106 +1822,123 @@
                                         {results.deviceInfo.pid_number && (
                                             <div><span className="text-gray-500">P&ID:</span> <span className="font-semibold">{results.deviceInfo.pid_number}</span></div>
                                         )}
-                                        {results.deviceInfo.protected_system && (
-                                            <div><span className="text-gray-500">Protected System:</span> <span className="font-semibold">{results.deviceInfo.protected_system}</span></div>
-                                        )}
                                     </div>
                                 </div>
                             )}
 
-                            {/* Main Results Card */}
+                            {/* Sizing Results Card */}
                             <div className="bg-white rounded-xl shadow-lg p-6">
-                                <div className="flex justify-between items-start mb-4">
-                                    <h2 className="text-xl font-semibold">Sizing Results</h2>
-                                    <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
-                                        {SCENARIOS.find(s => s.id === scenario)?.name}
-                                    </span>
-                                </div>
+                                <h2 className="text-xl font-semibold mb-4">Sizing Results</h2>
 
-                                {/* Orifice Result - Highlighted */}
-                                <div className="bg-blue-50 rounded-xl p-6 mb-6 text-center">
-                                    <p className="text-sm text-gray-600 mb-1">Selected Orifice</p>
-                                    <p className="text-5xl font-bold franc-accent mb-2">{results.selected_orifice}</p>
-                                    <p className="text-lg text-gray-700">{results.orifice_size}</p>
-                                    <p className="text-md text-gray-600">Inlet: {results.orifice_inlet} | Outlet: {results.orifice_outlet}</p>
-                                    <p className="text-sm text-gray-500 mt-2">
-                                        {results.orifice_area} in² — {results.utilization.toFixed(1)}% utilized ({results.required_area.toFixed(4)} in² required)
-                                    </p>
-                                </div>
-
-                                {/* Results Grid */}
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                                    <div className="p-3 bg-gray-50 rounded-lg">
-                                        <p className="text-xs text-gray-500">Relief Rate</p>
-                                        <p className="text-lg font-semibold">{results.relief_rate.toLocaleString()}</p>
-                                        <p className="text-xs text-gray-500">lb/hr</p>
-                                    </div>
-                                    <div className="p-3 bg-gray-50 rounded-lg">
-                                        <p className="text-xs text-gray-500">Relieving P</p>
-                                        <p className="text-lg font-semibold">{results.relieving_pressure.toFixed(1)}</p>
-                                        <p className="text-xs text-gray-500">psia</p>
-                                    </div>
-                                    <div className="p-3 bg-gray-50 rounded-lg">
-                                        <p className="text-xs text-gray-500">Flow Type</p>
-                                        <p className="text-lg font-semibold">{results.flow_type}</p>
-                                    </div>
-                                    <div className="p-3 bg-gray-50 rounded-lg">
-                                        <p className="text-xs text-gray-500">Molecular Wt</p>
-                                        <p className="text-lg font-semibold">{results.mw.toFixed(2)}</p>
-                                        <p className="text-xs text-gray-500">g/mol</p>
-                                    </div>
-                                </div>
-
-                                {results.heat_input && (
-                                    <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-4">
-                                        <div className="p-3 bg-orange-50 rounded-lg">
-                                            <p className="text-xs text-gray-500">Heat Input</p>
-                                            <p className="text-lg font-semibold">{(results.heat_input / 1e6).toFixed(3)}</p>
-                                            <p className="text-xs text-gray-500">MMBtu/hr</p>
+                                {/* Controlling Scenario vs Installed Device */}
+                                <div className="bg-blue-50 rounded-xl p-6 mb-6">
+                                    <div className="grid grid-cols-2 gap-6">
+                                        <div className="text-center">
+                                            <p className="text-sm text-gray-600 mb-1">Controlling Scenario</p>
+                                            <p className="text-2xl font-bold text-blue-700 mb-1">
+                                                {results.controllingScenario ? results.scenarioResults[results.controllingScenario]?.name : '-'}
+                                            </p>
+                                            <p className="text-lg text-gray-700">
+                                                Required Area: <span className="font-semibold">{results.maxRequiredArea > 0 ? results.maxRequiredArea.toFixed(4) : '-'}</span> in²
+                                            </p>
                                         </div>
-                                        <div className="p-3 bg-orange-50 rounded-lg">
-                                            <p className="text-xs text-gray-500">Wetted Area</p>
-                                            <p className="text-lg font-semibold">{results.wetted_area?.toFixed(1)}</p>
-                                            <p className="text-xs text-gray-500">ft²</p>
+                                        <div className="text-center border-l border-blue-200">
+                                            <p className="text-sm text-gray-600 mb-1">Installed Device</p>
+                                            <p className="text-2xl font-bold franc-accent mb-1">
+                                                {results.selectedOrifice ? results.selectedOrifice.letter : '-'}
+                                            </p>
+                                            <p className="text-lg text-gray-700">
+                                                Rated Area: <span className="font-semibold">{results.ratedArea > 0 ? results.ratedArea.toFixed(3) : '-'}</span> in²
+                                            </p>
                                         </div>
                                     </div>
-                                )}
+                                    {results.ratedArea > 0 && results.maxRequiredArea > 0 && (
+                                        <div className="mt-4 pt-4 border-t border-blue-200 text-center">
+                                            <span className={`text-lg font-bold ${results.ratedArea >= results.maxRequiredArea ? 'text-green-600' : 'text-red-600'}`}>
+                                                {results.ratedArea >= results.maxRequiredArea ? '✓ ADEQUATE' : '✗ UNDERSIZED'}
+                                            </span>
+                                            <span className="text-gray-500 ml-2">
+                                                ({((results.maxRequiredArea / results.ratedArea) * 100).toFixed(1)}% utilized)
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
 
-                                {/* Fluid Properties */}
-                                <div className="mt-6 pt-6 border-t">
-                                    <h3 className="font-medium mb-3">Fluid Properties</h3>
-                                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 text-sm">
-                                        <div><span className="text-gray-500">Z:</span> <span className="font-medium">{results.Z.toFixed(4)}</span></div>
-                                        <div><span className="text-gray-500">γ:</span> <span className="font-medium">{results.gamma.toFixed(3)}</span></div>
-                                        <div><span className="text-gray-500">ρ:</span> <span className="font-medium">{results.density.toFixed(2)} kg/m³</span></div>
-                                        {results.lfl && <div><span className="text-gray-500">LFL:</span> <span className="font-medium">{results.lfl.toFixed(2)}%</span></div>}
-                                        {results.ufl && <div><span className="text-gray-500">UFL:</span> <span className="font-medium">{results.ufl.toFixed(2)}%</span></div>}
-                                    </div>
+                                {/* Summary of Potential Relieving Scenarios Table */}
+                                <h3 className="font-medium mb-3">Summary of Potential Relieving Scenarios</h3>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm border-collapse">
+                                        <thead>
+                                            <tr className="bg-gray-100">
+                                                <th className="border border-gray-300 px-3 py-2 text-left">Applicable?</th>
+                                                <th className="border border-gray-300 px-3 py-2 text-left">Scenario</th>
+                                                <th className="border border-gray-300 px-3 py-2 text-right">Required/Rated Flow (lb/hr)</th>
+                                                <th className="border border-gray-300 px-3 py-2 text-right">Required Area (in²)</th>
+                                                <th className="border border-gray-300 px-3 py-2 text-center">Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {SCENARIOS.map(s => {
+                                                const sr = results.scenarioResults[s.id];
+                                                const isControlling = results.controllingScenario === s.id;
+                                                const isApplicable = scenarioSelections[s.id]?.applicable;
+                                                return (
+                                                    <tr key={s.id} className={isControlling ? 'bg-yellow-50 font-bold' : ''}>
+                                                        <td className="border border-gray-300 px-3 py-2">
+                                                            <span className={isApplicable ? 'text-green-600' : 'text-gray-400'}>
+                                                                {isApplicable ? 'YES' : 'NO'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="border border-gray-300 px-3 py-2">{s.name}</td>
+                                                        <td className="border border-gray-300 px-3 py-2 text-right">
+                                                            {sr && !sr.placeholder
+                                                                ? `${sr.requiredFlow > 0 ? sr.requiredFlow.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} / ${sr.ratedFlow > 0 ? sr.ratedFlow.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'}`
+                                                                : '-'
+                                                            }
+                                                        </td>
+                                                        <td className="border border-gray-300 px-3 py-2 text-right">
+                                                            {sr && !sr.placeholder && sr.requiredArea > 0 ? sr.requiredArea.toFixed(4) : '-'}
+                                                        </td>
+                                                        <td className="border border-gray-300 px-3 py-2 text-center">
+                                                            {sr && !sr.placeholder ? (
+                                                                <span className={sr.adequate ? 'text-green-600' : 'text-red-600 font-bold'}>
+                                                                    {sr.adequate ? 'Adequate' : 'Undersized'}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-gray-400">-</span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
 
-                            {/* Upgrade CTA */}
+                            {/* Professional Reports & Services */}
                             <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-xl shadow-lg p-6 text-white">
-                                <h3 className="text-xl font-semibold mb-2">Need a Professional Report?</h3>
-                                <p className="text-blue-100 mb-4">Get a detailed PDF calculation package or PE-stamped documentation.</p>
+                                <h3 className="text-xl font-semibold mb-2">Professional Reports & Services</h3>
+                                <p className="text-blue-100 mb-4">Auto-generate a detailed PDF report with all inputs and calculations.</p>
 
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                     <div className="bg-white/10 rounded-lg p-4">
                                         <p className="font-semibold text-lg">Standard Report</p>
-                                        <p className="text-3xl font-bold my-2">$149</p>
+                                        <p className="text-sm text-blue-200 mb-2">First report FREE!</p>
+                                        <p className="text-3xl font-bold my-2">$99<span className="text-sm font-normal">/each after</span></p>
                                         <ul className="text-sm text-blue-100 space-y-1 mb-4">
                                             <li>✓ Full calculation package</li>
-                                            <li>✓ PDF format</li>
-                                            <li>✓ 24-hour delivery</li>
+                                            <li>✓ Auto-generated PDF</li>
+                                            <li>✓ All inputs documented</li>
                                         </ul>
-                                        <a href="mailto:info@franceng.com?subject=PSV%20Standard%20Report%20Request"
-                                           className="block text-center py-2 bg-white text-blue-600 rounded-lg font-medium hover:bg-blue-50 transition">
-                                            Request Quote
-                                        </a>
+                                        <button className="w-full py-2 bg-white text-blue-600 rounded-lg font-medium hover:bg-blue-50 transition">
+                                            Generate Report
+                                        </button>
                                     </div>
 
                                     <div className="bg-white/10 rounded-lg p-4 ring-2 ring-yellow-400">
                                         <p className="font-semibold text-lg">PE-Reviewed Report</p>
+                                        <p className="text-sm text-yellow-300 mb-2">Engineer Stamped</p>
                                         <p className="text-3xl font-bold my-2">$499</p>
                                         <ul className="text-sm text-blue-100 space-y-1 mb-4">
                                             <li>✓ Everything in Standard</li>
@@ -1850,6 +1950,21 @@
                                             Request Quote
                                         </a>
                                     </div>
+
+                                    <div className="bg-white/10 rounded-lg p-4">
+                                        <p className="font-semibold text-lg">PSV Sizing Services</p>
+                                        <p className="text-sm text-blue-200 mb-2">Let us do it for you</p>
+                                        <p className="text-3xl font-bold my-2">Custom</p>
+                                        <ul className="text-sm text-blue-100 space-y-1 mb-4">
+                                            <li>✓ Full engineering review</li>
+                                            <li>✓ Multiple scenarios</li>
+                                            <li>✓ Turnkey solution</li>
+                                        </ul>
+                                        <a href="mailto:info@franceng.com?subject=PSV%20Sizing%20Services%20Inquiry"
+                                           className="block text-center py-2 bg-white text-blue-600 rounded-lg font-medium hover:bg-blue-50 transition">
+                                            Contact Us
+                                        </a>
+                                    </div>
                                 </div>
                             </div>
 
@@ -1859,7 +1974,7 @@
                                     ← Start Over
                                 </button>
                                 <button onClick={() => setStep(4)} className="px-6 py-2 border bg-white rounded-lg font-medium hover:bg-gray-50 transition">
-                                    ← Modify Conditions
+                                    ← Modify Calcs
                                 </button>
                             </div>
                         </div>
