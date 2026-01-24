@@ -251,6 +251,26 @@
             };
         }
 
+        // Device Info Header Component (shows on steps 2-5)
+        function DeviceInfoHeader({ deviceInfo }) {
+            if (!deviceInfo.tag && !deviceInfo.pid_number && !deviceInfo.facility_name) return null;
+            return (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                    <div className="flex flex-wrap gap-4 text-sm">
+                        {deviceInfo.tag && (
+                            <div><span className="text-blue-600 font-medium">Tag:</span> <span className="font-semibold">{deviceInfo.tag}</span></div>
+                        )}
+                        {deviceInfo.pid_number && (
+                            <div><span className="text-blue-600 font-medium">P&ID:</span> <span className="font-semibold">{deviceInfo.pid_number}</span></div>
+                        )}
+                        {deviceInfo.facility_name && (
+                            <div><span className="text-blue-600 font-medium">Facility:</span> <span className="font-semibold">{deviceInfo.facility_name}</span></div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
         // File Upload Component
         function FileUpload({ label, accept, file, onFileChange }) {
             const handleChange = (e) => {
@@ -298,11 +318,12 @@
                 pid_number: '',
                 facility_name: '',
                 protected_system: '',
+                mawp: '',
                 selected_orifice: '',
                 new_or_existing: 'new',
                 discharge_location: 'atmosphere',
-                mawp: '',
                 set_pressure: '',
+                psv_type: 'conventional',
             });
 
             // Step 2: Scenario selections with applicable flags and notes
@@ -456,6 +477,30 @@
                                     />
                                 </div>
 
+                                {/* Protected System */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Protected System</label>
+                                    <input
+                                        type="text"
+                                        value={deviceInfo.protected_system}
+                                        onChange={(e) => setDeviceInfo({...deviceInfo, protected_system: e.target.value})}
+                                        className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                        placeholder="Absorber V-123"
+                                    />
+                                </div>
+
+                                {/* Protected MAWP */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Protected System MAWP (psig)</label>
+                                    <input
+                                        type="number"
+                                        value={deviceInfo.mawp}
+                                        onChange={(e) => setDeviceInfo({...deviceInfo, mawp: e.target.value})}
+                                        className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                        placeholder="285"
+                                    />
+                                </div>
+
                                 {/* Relief Device Selection (API Sizes) */}
                                 <div className="sm:col-span-2">
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Relief Device Selection (API Sizes)</label>
@@ -501,30 +546,6 @@
                                     </select>
                                 </div>
 
-                                {/* Protected System */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Protected System</label>
-                                    <input
-                                        type="text"
-                                        value={deviceInfo.protected_system}
-                                        onChange={(e) => setDeviceInfo({...deviceInfo, protected_system: e.target.value})}
-                                        className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
-                                        placeholder="Absorber V-123"
-                                    />
-                                </div>
-
-                                {/* Protected MAWP */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Protected System MAWP (psig)</label>
-                                    <input
-                                        type="number"
-                                        value={deviceInfo.mawp}
-                                        onChange={(e) => setDeviceInfo({...deviceInfo, mawp: e.target.value})}
-                                        className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
-                                        placeholder="285"
-                                    />
-                                </div>
-
                                 {/* PSV Set Pressure */}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">PSV Set Pressure (psig)</label>
@@ -538,7 +559,22 @@
                                     <p className="text-xs text-gray-500 mt-1">Typically equal to or less than MAWP</p>
                                 </div>
 
-                                {/* File Uploads */}
+                                {/* PSV Type */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">PSV Type</label>
+                                    <select
+                                        value={deviceInfo.psv_type}
+                                        onChange={(e) => setDeviceInfo({...deviceInfo, psv_type: e.target.value})}
+                                        className="w-full px-3 py-2 border rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                                    >
+                                        <option value="conventional">CONVENTIONAL</option>
+                                        <option value="balanced">BALANCED</option>
+                                        <option value="pilot_modulating">PILOT (MODULATING)</option>
+                                        <option value="pilot_pop">PILOT (POP-ACTING)</option>
+                                    </select>
+                                </div>
+
+                                {/* P&ID Upload */}
                                 <FileUpload
                                     label="P&ID Upload (PDF)"
                                     accept=".pdf"
@@ -546,6 +582,7 @@
                                     onFileChange={setPidFile}
                                 />
 
+                                {/* Miscellaneous */}
                                 <FileUpload
                                     label="Miscellaneous"
                                     accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
@@ -568,6 +605,7 @@
                     {/* Step 2: Scenario Identification */}
                     {step === 2 && (
                         <div className="fade-in bg-white rounded-xl shadow-lg p-6">
+                            <DeviceInfoHeader deviceInfo={deviceInfo} />
                             <h2 className="text-xl font-semibold mb-2">Potential Relieving Scenario Identification</h2>
                             <p className="text-sm text-gray-600 mb-6">Check "Applicable" for scenarios that require calculation. Add notes to document your justification.</p>
 
@@ -642,6 +680,7 @@
                     {/* Step 3: Fluid Selection */}
                     {step === 3 && (
                         <div className="fade-in bg-white rounded-xl shadow-lg p-6">
+                            <DeviceInfoHeader deviceInfo={deviceInfo} />
                             <h2 className="text-xl font-semibold mb-4">Select Fluid</h2>
 
                             {/* Presets */}
@@ -706,6 +745,7 @@
                     {/* Step 4: Operating Conditions */}
                     {step === 4 && (
                         <div className="fade-in bg-white rounded-xl shadow-lg p-6">
+                            <DeviceInfoHeader deviceInfo={deviceInfo} />
                             <h2 className="text-xl font-semibold mb-4">Operating Conditions</h2>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
