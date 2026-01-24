@@ -347,6 +347,88 @@
                 blocked_vapor: {},
                 cv_failure: {},
             });
+
+            // Scenario-specific conditions
+            const [scenarioConditions, setScenarioConditions] = useState({
+                fire_wetted: {
+                    normal_op_pressure: 80,
+                    normal_op_temp: 125,
+                    wetted_area: 0,
+                    latent_heat: 150,
+                },
+                fire_unwetted: {
+                    normal_op_pressure: 80,
+                    normal_op_temp: 125,
+                    unwetted_area: 0,
+                },
+                blocked_vapor: {
+                    source_pressure: 200,
+                    relieving_temp: 100,
+                    flow_rate: 10000,
+                },
+                cv_failure: {
+                    cv_capacity: 100,
+                    upstream_pressure: 200,
+                    relieving_temp: 100,
+                },
+            });
+
+            // Constants
+            const AMBIENT_PRESSURE = 14.69; // psia
+            const MAX_WALL_TEMP = 1100; // °F
+            const FIRE_OVERPRESSURE = 0.21; // 21%
+
+            // Calculate molecular weight from composition
+            const getMolecularWeight = (composition) => {
+                let mw = 0, totalMol = 0;
+                Object.entries(composition).forEach(([comp, molPct]) => {
+                    if (molPct > 0 && COMPONENTS[comp]) {
+                        totalMol += molPct;
+                        mw += molPct * COMPONENTS[comp].mw;
+                    }
+                });
+                return totalMol > 0 ? mw / totalMol : 0;
+            };
+
+            // Calculate pseudo-critical pressure using Kay's mixing rule
+            const getCriticalPressure = (composition) => {
+                let pc_mix = 0, totalMol = 0;
+                Object.entries(composition).forEach(([comp, molPct]) => {
+                    if (molPct > 0 && COMPONENTS[comp]) {
+                        totalMol += molPct;
+                        pc_mix += (molPct / 100) * (COMPONENTS[comp].pc / 6894.76); // Convert Pa to psia
+                    }
+                });
+                return totalMol > 0 ? pc_mix * 100 / totalMol : 0;
+            };
+
+            // API 521 Eqn (11): T1 = (p1/pn) * Tn
+            const calcRelievingTemp = (p1_psia, pn_psig, Tn_F) => {
+                const pn_psia = pn_psig + AMBIENT_PRESSURE;
+                const Tn_R = Tn_F + 459.67;
+                const T1_R = (p1_psia / pn_psia) * Tn_R;
+                return T1_R - 459.67; // Convert back to °F
+            };
+
+            // API 521 Eqn (12): qm,relief = C12 * sqrt(M * p1) * [A'(Tw-T1)^1.25 / T1^1.1506]
+            const C12 = 0.1406; // Constant for lb/hr, ft², psia, °F
+            const calcFireUnwettedReliefLoad = (M, p1_psia, A_prime, Tw_F, T1_F) => {
+                if (T1_F <= 0 || Tw_F <= T1_F) return 0;
+                const T1_R = T1_F + 459.67;
+                const numerator = A_prime * Math.pow(Tw_F - T1_F, 1.25);
+                const denominator = Math.pow(T1_R, 1.1506);
+                return C12 * Math.sqrt(M * p1_psia) * (numerator / denominator);
+            };
+
+            // Convert relief load to volumetric rate (MMscfd)
+            const calcVolumetricRate = (qm_lb_hr, M, T_F, P_psia) => {
+                if (M <= 0 || P_psia <= 0) return 0;
+                const T_R = T_F + 459.67;
+                // PV = nRT, n = qm/M, convert to scf/day then MMscfd
+                const scf_per_hr = (qm_lb_hr / M) * 10.73 * (520) / 14.696; // at standard conditions
+                return (scf_per_hr * 24) / 1e6;
+            };
+
             const [conditions, setConditions] = useState({
                 temperature: 100,
                 tempUnit: 'F',
@@ -395,6 +477,14 @@
                 setCompositions(prev => ({
                     ...prev,
                     [toScenarioId]: { ...prev[fromScenarioId] }
+                }));
+            };
+
+            // Update scenario-specific conditions
+            const updateScenarioCondition = (scenarioId, field, value) => {
+                setScenarioConditions(prev => ({
+                    ...prev,
+                    [scenarioId]: { ...prev[scenarioId], [field]: parseFloat(value) || 0 }
                 }));
             };
 
@@ -852,144 +942,226 @@
                         </div>
                     )}
 
-                    {/* Step 4: Operating Conditions */}
+                    {/* Step 4: Operating Conditions - Scenario Specific */}
                     {step === 4 && (
-                        <div className="fade-in bg-white rounded-xl shadow-lg p-6">
-                            <h2 className="text-xl font-semibold mb-4">Operating Conditions</h2>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                                {/* Temperature */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Relieving Temperature</label>
-                                    <div className="flex space-x-2">
-                                        <input
-                                            type="number"
-                                            value={conditions.temperature}
-                                            onChange={(e) => setConditions({...conditions, temperature: parseFloat(e.target.value)})}
-                                            className="input-field flex-1 px-3 py-2 border rounded-lg focus:outline-none"
-                                        />
-                                        <select
-                                            value={conditions.tempUnit}
-                                            onChange={(e) => setConditions({...conditions, tempUnit: e.target.value})}
-                                            className="px-3 py-2 border rounded-lg bg-white"
-                                        >
-                                            <option value="F">°F</option>
-                                            <option value="C">°C</option>
-                                            <option value="K">K</option>
-                                        </select>
-                                    </div>
-                                </div>
-
-                                {/* Pressure */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Operating Pressure</label>
-                                    <div className="flex space-x-2">
-                                        <input
-                                            type="number"
-                                            value={conditions.pressure}
-                                            onChange={(e) => setConditions({...conditions, pressure: parseFloat(e.target.value)})}
-                                            className="input-field flex-1 px-3 py-2 border rounded-lg focus:outline-none"
-                                        />
-                                        <select
-                                            value={conditions.pressureUnit}
-                                            onChange={(e) => setConditions({...conditions, pressureUnit: e.target.value})}
-                                            className="px-3 py-2 border rounded-lg bg-white"
-                                        >
-                                            <option value="psig">psig</option>
-                                            <option value="psia">psia</option>
-                                            <option value="bar">bar(g)</option>
-                                            <option value="kPa">kPa(g)</option>
-                                        </select>
-                                    </div>
-                                </div>
-
-                                {/* Back Pressure */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Back Pressure (psig)</label>
-                                    <input
-                                        type="number"
-                                        value={conditions.back_pressure}
-                                        onChange={(e) => setConditions({...conditions, back_pressure: parseFloat(e.target.value)})}
-                                        className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
-                                    />
-                                </div>
-
-                                {/* Latent Heat */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Latent Heat (BTU/lb)</label>
-                                    <input
-                                        type="number"
-                                        value={conditions.latent_heat}
-                                        onChange={(e) => setConditions({...conditions, latent_heat: parseFloat(e.target.value)})}
-                                        className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
-                                    />
-                                    <p className="text-xs text-gray-500 mt-1">For fire cases</p>
-                                </div>
-
-                                {/* Flow Rate */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Relief Flow Rate (lb/hr)</label>
-                                    <input
-                                        type="number"
-                                        value={conditions.flow_rate}
-                                        onChange={(e) => setConditions({...conditions, flow_rate: parseFloat(e.target.value)})}
-                                        className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
-                                    />
-                                    <p className="text-xs text-gray-500 mt-1">For blocked outlet / CV failure</p>
-                                </div>
+                        <div className="fade-in space-y-6">
+                            <div className="bg-white rounded-xl shadow-lg p-6">
+                                <h2 className="text-xl font-semibold mb-2">Required Relieving Rate Calculation</h2>
+                                <p className="text-sm text-gray-600 mb-6">Enter conditions for each applicable scenario. Green fields are inputs, blue fields are calculated outputs.</p>
                             </div>
 
-                            {/* Vessel Dimensions - only show for fire scenarios */}
-                            {(scenario === 'fire_wetted' || scenario === 'fire_unwetted') && (
-                                <div className="mt-6 pt-6 border-t">
-                                    <h3 className="font-medium mb-3">Vessel Dimensions (for fire cases)</h3>
-                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                                        <div>
-                                            <label className="block text-xs text-gray-600 mb-1">Diameter (ft)</label>
-                                            <input
-                                                type="number"
-                                                value={vessel.diameter}
-                                                onChange={(e) => setVessel({...vessel, diameter: parseFloat(e.target.value)})}
-                                                className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
-                                            />
+                            {/* Fire-Unwetted (1B) Section */}
+                            {scenarioSelections.fire_unwetted?.applicable && (() => {
+                                const comp = compositions.fire_unwetted || {};
+                                const cond = scenarioConditions.fire_unwetted;
+                                const setP = parseFloat(deviceInfo.set_pressure) || 0;
+                                const p1 = setP * (1 + FIRE_OVERPRESSURE) + AMBIENT_PRESSURE;
+                                const M = getMolecularWeight(comp);
+                                const Pcrit = getCriticalPressure(comp);
+                                const T1 = calcRelievingTemp(p1, cond.normal_op_pressure, cond.normal_op_temp);
+                                const qRelief = calcFireUnwettedReliefLoad(M, p1, cond.unwetted_area, MAX_WALL_TEMP, T1);
+                                const qVol = calcVolumetricRate(qRelief, M, T1, p1);
+
+                                return (
+                                    <div className="bg-white rounded-xl shadow-lg p-6">
+                                        <div className="flex items-center space-x-3 mb-4">
+                                            <span className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-gray-200 text-gray-700 font-bold text-sm">1B</span>
+                                            <span className="text-xl">💨</span>
+                                            <h3 className="text-lg font-semibold">Fire Unwetted (Vapor) - API 521 6th Ed. 4.4.13.2.4.3</h3>
                                         </div>
-                                        <div>
-                                            <label className="block text-xs text-gray-600 mb-1">Length (ft)</label>
-                                            <input
-                                                type="number"
-                                                value={vessel.length}
-                                                onChange={(e) => setVessel({...vessel, length: parseFloat(e.target.value)})}
-                                                className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
-                                            />
+
+                                        <p className="text-xs text-gray-500 mb-4">
+                                            This method applies for above-grade pressure vessels with design pressures exceeding 15 psig.
+                                            Unwetted wall vessels are those where internal walls are exposed to gas/vapor.
+                                        </p>
+
+                                        {/* Equipment Details Placeholder */}
+                                        <div className="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-4 mb-6">
+                                            <h4 className="font-medium text-gray-700 mb-2">Equipment Details (Coming Soon)</h4>
+                                            <p className="text-xs text-gray-500">Vessel geometry inputs will be added here</p>
                                         </div>
-                                        <div>
-                                            <label className="block text-xs text-gray-600 mb-1">Liquid Level (%)</label>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                max="100"
-                                                value={vessel.liquid_level * 100}
-                                                onChange={(e) => setVessel({...vessel, liquid_level: parseFloat(e.target.value) / 100})}
-                                                className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
-                                            />
+
+                                        <div className="space-y-3">
+                                            {/* Ambient Pressure - Output */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Ambient Pressure</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <input type="text" value={AMBIENT_PRESSURE.toFixed(2)} readOnly
+                                                        className="w-24 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-sm text-right text-blue-800" />
+                                                    <span className="text-xs text-gray-500 w-12">psia</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Relief Device Set Pressure - Output (from Step 1) */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Relief Device Set Pressure</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <input type="text" value={setP || '-'} readOnly
+                                                        className="w-24 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-sm text-right text-blue-800" />
+                                                    <span className="text-xs text-gray-500 w-12">psig</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Allowable Overpressure - Output */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Allowable Overpressure</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <input type="text" value="21%" readOnly
+                                                        className="w-24 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-sm text-right text-blue-800" />
+                                                    <span className="text-xs text-gray-500 w-12"></span>
+                                                </div>
+                                            </div>
+
+                                            {/* Absolute Relieving Pressure - Output */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Absolute Relieving Pressure (p₁)</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <input type="text" value={p1 > 0 ? p1.toFixed(1) : '-'} readOnly
+                                                        className="w-24 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-sm text-right text-blue-800" />
+                                                    <span className="text-xs text-gray-500 w-12">psia</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Critical Pressure - Output (from composition) */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Critical Pressure (P<sub>CRIT</sub>)</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <input type="text" value={Pcrit > 0 ? Pcrit.toFixed(0) : '-'} readOnly
+                                                        className="w-24 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-sm text-right text-blue-800" />
+                                                    <span className="text-xs text-gray-500 w-12">psia</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Vapor Molecular Weight - Output (from composition) */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Vapor Molecular Weight (M)</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <input type="text" value={M > 0 ? M.toFixed(1) : '-'} readOnly
+                                                        className="w-24 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-sm text-right text-blue-800" />
+                                                    <span className="text-xs text-gray-500 w-12"></span>
+                                                </div>
+                                            </div>
+
+                                            {/* Maximum Wall Temperature - Output (fixed) */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Maximum Wall Temperature (T<sub>W</sub>)</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <input type="text" value={MAX_WALL_TEMP.toLocaleString()} readOnly
+                                                        className="w-24 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-sm text-right text-blue-800" />
+                                                    <span className="text-xs text-gray-500 w-12">°F</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Normal Operating Pressure - Input */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Normal Operating Pressure (P<sub>n</sub>)</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <input type="number" value={cond.normal_op_pressure}
+                                                        onChange={(e) => updateScenarioCondition('fire_unwetted', 'normal_op_pressure', e.target.value)}
+                                                        className="w-24 px-3 py-1.5 bg-green-50 border border-green-300 rounded text-sm text-right focus:outline-none focus:border-green-500" />
+                                                    <span className="text-xs text-gray-500 w-12">psig</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Normal Operating Temperature - Input */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Normal Operating Temperature (T<sub>n</sub>)</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <input type="number" value={cond.normal_op_temp}
+                                                        onChange={(e) => updateScenarioCondition('fire_unwetted', 'normal_op_temp', e.target.value)}
+                                                        className="w-24 px-3 py-1.5 bg-green-50 border border-green-300 rounded text-sm text-right focus:outline-none focus:border-green-500" />
+                                                    <span className="text-xs text-gray-500 w-12">°F</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Unwetted Surface Area - Input */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Unwetted Surface Area (A')</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <input type="number" value={cond.unwetted_area}
+                                                        onChange={(e) => updateScenarioCondition('fire_unwetted', 'unwetted_area', e.target.value)}
+                                                        className="w-24 px-3 py-1.5 bg-green-50 border border-green-300 rounded text-sm text-right focus:outline-none focus:border-green-500" />
+                                                    <span className="text-xs text-gray-500 w-12">ft²</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Relieving Temperature - Output */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Relieving Temperature (T₁)</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <input type="text" value={T1 > 0 ? T1.toFixed(0) : '-'} readOnly
+                                                        className="w-24 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-sm text-right text-blue-800" />
+                                                    <span className="text-xs text-gray-500 w-12">°F</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Relief Load - Output */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Relief Load (q<sub>m,relief</sub>)</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <input type="text" value={qRelief > 0 ? qRelief.toFixed(0) : '-'} readOnly
+                                                        className="w-24 px-3 py-1.5 bg-red-50 border border-red-200 rounded text-sm text-right text-red-800 font-medium" />
+                                                    <span className="text-xs text-gray-500 w-12">lb/hr</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Volumetric Relieving Rate - Output */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Required Volumetric Relieving Rate</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <input type="text" value={qVol > 0 ? qVol.toFixed(3) : '-'} readOnly
+                                                        className="w-24 px-3 py-1.5 bg-red-50 border border-red-200 rounded text-sm text-right text-red-800 font-medium" />
+                                                    <span className="text-xs text-gray-500 w-12">MMscfd</span>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div className="flex items-center">
-                                            <label className="flex items-center space-x-2 cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={vessel.insulated}
-                                                    onChange={(e) => setVessel({...vessel, insulated: e.target.checked})}
-                                                    className="w-4 h-4 rounded"
-                                                />
-                                                <span className="text-sm">Insulated</span>
-                                            </label>
-                                        </div>
+                                    </div>
+                                );
+                            })()}
+
+                            {/* Placeholder for other scenarios */}
+                            {scenarioSelections.fire_wetted?.applicable && (
+                                <div className="bg-white rounded-xl shadow-lg p-6">
+                                    <div className="flex items-center space-x-3 mb-4">
+                                        <span className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-gray-200 text-gray-700 font-bold text-sm">1A</span>
+                                        <span className="text-xl">🔥</span>
+                                        <h3 className="text-lg font-semibold">Fire-Wetted (Liquid Boil up)</h3>
+                                    </div>
+                                    <div className="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-4">
+                                        <p className="text-sm text-gray-500">Fire-Wetted calculation section coming soon...</p>
                                     </div>
                                 </div>
                             )}
 
-                            <div className="flex justify-between mt-6">
-                                <button onClick={() => setStep(3)} className="px-6 py-2 border rounded-lg font-medium hover:bg-gray-50 transition">
+                            {scenarioSelections.blocked_vapor?.applicable && (
+                                <div className="bg-white rounded-xl shadow-lg p-6">
+                                    <div className="flex items-center space-x-3 mb-4">
+                                        <span className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-gray-200 text-gray-700 font-bold text-sm">2A</span>
+                                        <span className="text-xl">⛔</span>
+                                        <h3 className="text-lg font-semibold">Blocked Outlet - Vapor</h3>
+                                    </div>
+                                    <div className="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-4">
+                                        <p className="text-sm text-gray-500">Blocked Outlet calculation section coming soon...</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {scenarioSelections.cv_failure?.applicable && (
+                                <div className="bg-white rounded-xl shadow-lg p-6">
+                                    <div className="flex items-center space-x-3 mb-4">
+                                        <span className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-gray-200 text-gray-700 font-bold text-sm">3</span>
+                                        <span className="text-xl">⚠️</span>
+                                        <h3 className="text-lg font-semibold">CV Failure - Vapor</h3>
+                                    </div>
+                                    <div className="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-4">
+                                        <p className="text-sm text-gray-500">CV Failure calculation section coming soon...</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Navigation */}
+                            <div className="flex justify-between">
+                                <button onClick={() => setStep(3)} className="px-6 py-2 border bg-white rounded-lg font-medium hover:bg-gray-50 transition">
                                     ← Back
                                 </button>
                                 <button onClick={calculate} className="px-6 py-2 franc-accent-bg text-white rounded-lg font-medium hover:bg-blue-700 transition">
