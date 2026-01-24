@@ -40,9 +40,9 @@
 
         // Component Database
         const COMPONENTS = {
-            methane: { name: 'Methane', formula: 'CH4', mw: 16.043, tc: 190.56, pc: 4599000, omega: 0.0115, lfl: 5.0, ufl: 15.0 },
-            ethane: { name: 'Ethane', formula: 'C2H6', mw: 30.070, tc: 305.32, pc: 4872000, omega: 0.0995, lfl: 3.0, ufl: 12.4 },
-            propane: { name: 'Propane', formula: 'C3H8', mw: 44.096, tc: 369.83, pc: 4248000, omega: 0.1523, lfl: 2.1, ufl: 9.5 },
+            methane: { name: 'Methane', formula: 'C1', mw: 16.043, tc: 190.56, pc: 4599000, omega: 0.0115, lfl: 5.0, ufl: 15.0 },
+            ethane: { name: 'Ethane', formula: 'C2', mw: 30.070, tc: 305.32, pc: 4872000, omega: 0.0995, lfl: 3.0, ufl: 12.4 },
+            propane: { name: 'Propane', formula: 'C3', mw: 44.096, tc: 369.83, pc: 4248000, omega: 0.1523, lfl: 2.1, ufl: 9.5 },
             isobutane: { name: 'Isobutane', formula: 'iC4', mw: 58.122, tc: 407.85, pc: 3640000, omega: 0.1835, lfl: 1.8, ufl: 8.4 },
             nbutane: { name: 'n-Butane', formula: 'nC4', mw: 58.122, tc: 425.12, pc: 3796000, omega: 0.2002, lfl: 1.8, ufl: 8.4 },
             isopentane: { name: 'Isopentane', formula: 'iC5', mw: 72.149, tc: 460.35, pc: 3381000, omega: 0.2275, lfl: 1.4, ufl: 7.6 },
@@ -403,10 +403,26 @@
             return (
                 <div className="max-w-4xl mx-auto p-4 sm:p-6">
                     {/* Header */}
-                    <div className="text-center mb-8">
-                        <h1 className="text-2xl sm:text-3xl font-bold franc-blue mb-2">PSV Sizing Calculator</h1>
-                        <p className="text-gray-600">Pressure Safety Valve Sizing per API 520/521</p>
-                        <p className="text-sm text-gray-500 mt-1">Franc Engineering | franceng.com</p>
+                    <div className="flex justify-between items-start mb-8">
+                        <div>
+                            <h1 className="text-2xl sm:text-3xl font-bold franc-blue mb-2">PSV Sizing Calculator</h1>
+                            <p className="text-gray-600">Pressure Safety Valve Sizing per API 520/521</p>
+                            <p className="text-sm text-gray-500 mt-1">Franc Engineering | franceng.com</p>
+                        </div>
+                        {/* Device Info - Upper Right */}
+                        {step > 1 && (deviceInfo.tag || deviceInfo.pid_number || deviceInfo.facility_name) && (
+                            <div className="text-right text-sm bg-gray-100 rounded-lg p-3">
+                                {deviceInfo.tag && (
+                                    <div><span className="text-gray-500">Relief Device Tag:</span> <span className="font-semibold">{deviceInfo.tag}</span></div>
+                                )}
+                                {deviceInfo.pid_number && (
+                                    <div><span className="text-gray-500">P&ID Number:</span> <span className="font-semibold">{deviceInfo.pid_number}</span></div>
+                                )}
+                                {deviceInfo.facility_name && (
+                                    <div><span className="text-gray-500">Facility:</span> <span className="font-semibold">{deviceInfo.facility_name}</span></div>
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     {/* Progress Steps */}
@@ -605,7 +621,6 @@
                     {/* Step 2: Scenario Identification */}
                     {step === 2 && (
                         <div className="fade-in bg-white rounded-xl shadow-lg p-6">
-                            <DeviceInfoHeader deviceInfo={deviceInfo} />
                             <h2 className="text-xl font-semibold mb-2">Potential Relieving Scenario Identification</h2>
                             <p className="text-sm text-gray-600 mb-6">Check "Applicable" for scenarios that require calculation. Add notes to document your justification.</p>
 
@@ -680,7 +695,6 @@
                     {/* Step 3: Fluid Selection */}
                     {step === 3 && (
                         <div className="fade-in bg-white rounded-xl shadow-lg p-6">
-                            <DeviceInfoHeader deviceInfo={deviceInfo} />
                             <h2 className="text-xl font-semibold mb-4">Select Fluid</h2>
 
                             {/* Presets */}
@@ -700,18 +714,18 @@
                                 </div>
                             </div>
 
-                            {/* Composition Grid */}
+                            {/* Composition List */}
                             <div className="mb-4">
-                                <div className="flex justify-between items-center mb-2">
+                                <div className="flex justify-between items-center mb-3">
                                     <label className="block text-sm font-medium text-gray-700">Composition (mol%)</label>
                                     <span className={`text-sm font-medium ${Math.abs(totalMol - 100) < 0.1 ? 'text-green-600' : 'text-red-500'}`}>
                                         Total: {totalMol.toFixed(1)}%
                                     </span>
                                 </div>
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                <div className="space-y-2 max-h-96 overflow-y-auto pr-2">
                                     {Object.entries(COMPONENTS).map(([id, comp]) => (
-                                        <div key={id} className="flex items-center space-x-2">
-                                            <label className="w-16 text-xs text-gray-600">{comp.formula}</label>
+                                        <div key={id} className="flex items-center justify-between py-1 border-b border-gray-100">
+                                            <label className="text-sm text-gray-700">{comp.name} ({comp.formula})</label>
                                             <input
                                                 type="number"
                                                 min="0"
@@ -719,7 +733,7 @@
                                                 step="0.1"
                                                 value={composition[id] || ''}
                                                 onChange={(e) => handleCompChange(id, e.target.value)}
-                                                className="input-field w-full px-2 py-1 border rounded text-sm focus:outline-none"
+                                                className="input-field w-24 px-3 py-1.5 border rounded text-sm text-right focus:outline-none"
                                                 placeholder="0"
                                             />
                                         </div>
@@ -745,7 +759,6 @@
                     {/* Step 4: Operating Conditions */}
                     {step === 4 && (
                         <div className="fade-in bg-white rounded-xl shadow-lg p-6">
-                            <DeviceInfoHeader deviceInfo={deviceInfo} />
                             <h2 className="text-xl font-semibold mb-4">Operating Conditions</h2>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
