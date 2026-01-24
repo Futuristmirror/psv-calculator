@@ -784,23 +784,50 @@
                                                 </div>
                                             </div>
 
-                                            {/* Composition Grid - 2 columns, no scroll */}
-                                            <div className="grid grid-cols-2 gap-x-6 gap-y-1">
-                                                {Object.entries(COMPONENTS).map(([compId, comp]) => (
-                                                    <div key={compId} className="flex items-center justify-between py-1 border-b border-gray-100">
-                                                        <label className="text-sm text-gray-700">{comp.name} ({comp.formula})</label>
-                                                        <input
-                                                            type="number"
-                                                            min="0"
-                                                            max="100"
-                                                            step="0.1"
-                                                            value={scenarioComp[compId] || ''}
-                                                            onChange={(e) => handleCompChange(scenarioItem.id, compId, e.target.value)}
-                                                            className="input-field w-20 px-2 py-1 border rounded text-sm text-right focus:outline-none"
-                                                            placeholder="0"
-                                                        />
-                                                    </div>
-                                                ))}
+                                            {/* Composition Grid - Left: Hydrocarbons, Right: Inerts/Other */}
+                                            <div className="flex gap-8">
+                                                {/* Left Column - Hydrocarbons */}
+                                                <div className="flex-1 space-y-1">
+                                                    {['methane', 'ethane', 'propane', 'isobutane', 'nbutane', 'isopentane', 'npentane', 'nhexane', 'nheptane', 'noctane', 'nnonane', 'ndecane'].map((compId) => {
+                                                        const comp = COMPONENTS[compId];
+                                                        return (
+                                                            <div key={compId} className="flex items-center justify-between py-1 border-b border-gray-100">
+                                                                <label className="text-sm text-gray-700">{comp.name} ({comp.formula})</label>
+                                                                <input
+                                                                    type="number"
+                                                                    min="0"
+                                                                    max="100"
+                                                                    step="0.1"
+                                                                    value={scenarioComp[compId] || ''}
+                                                                    onChange={(e) => handleCompChange(scenarioItem.id, compId, e.target.value)}
+                                                                    className="input-field w-20 px-2 py-1 border rounded text-sm text-right focus:outline-none"
+                                                                    placeholder="0"
+                                                                />
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                                {/* Right Column - Inerts/Other */}
+                                                <div className="flex-1 space-y-1">
+                                                    {['nitrogen', 'oxygen', 'co2', 'water', 'h2s'].map((compId) => {
+                                                        const comp = COMPONENTS[compId];
+                                                        return (
+                                                            <div key={compId} className="flex items-center justify-between py-1 border-b border-gray-100">
+                                                                <label className="text-sm text-gray-700">{comp.name} ({comp.formula})</label>
+                                                                <input
+                                                                    type="number"
+                                                                    min="0"
+                                                                    max="100"
+                                                                    step="0.1"
+                                                                    value={scenarioComp[compId] || ''}
+                                                                    onChange={(e) => handleCompChange(scenarioItem.id, compId, e.target.value)}
+                                                                    className="input-field w-20 px-2 py-1 border rounded text-sm text-right focus:outline-none"
+                                                                    placeholder="0"
+                                                                />
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
                                             </div>
                                         </div>
                                     );
