@@ -297,11 +297,20 @@
                 tag: '',
                 pid_number: '',
                 facility_name: '',
+                protected_system: '',
                 selected_orifice: '',
                 new_or_existing: 'new',
                 discharge_location: 'atmosphere',
                 mawp: '',
                 set_pressure: '',
+            });
+
+            // Step 2: Scenario selections with applicable flags and notes
+            const [scenarioSelections, setScenarioSelections] = useState({
+                fire_wetted: { applicable: false, notes: '' },
+                fire_unwetted: { applicable: false, notes: '' },
+                blocked_vapor: { applicable: false, notes: '' },
+                cv_failure: { applicable: false, notes: '' },
             });
 
             // File uploads
@@ -492,6 +501,18 @@
                                     </select>
                                 </div>
 
+                                {/* Protected System */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Protected System</label>
+                                    <input
+                                        type="text"
+                                        value={deviceInfo.protected_system}
+                                        onChange={(e) => setDeviceInfo({...deviceInfo, protected_system: e.target.value})}
+                                        className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                        placeholder="Absorber V-123"
+                                    />
+                                </div>
+
                                 {/* Protected MAWP */}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Protected System MAWP (psig)</label>
@@ -544,21 +565,53 @@
                         </div>
                     )}
 
-                    {/* Step 2: Scenario Selection (moved from Step 4) */}
+                    {/* Step 2: Scenario Identification */}
                     {step === 2 && (
                         <div className="fade-in bg-white rounded-xl shadow-lg p-6">
-                            <h2 className="text-xl font-semibold mb-4">Scenario Identification</h2>
+                            <h2 className="text-xl font-semibold mb-2">Potential Relieving Scenario Identification</h2>
+                            <p className="text-sm text-gray-600 mb-6">Check "Applicable" for scenarios that require calculation. Add notes to document your justification.</p>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-4">
                                 {SCENARIOS.map((s) => (
                                     <div
                                         key={s.id}
-                                        className={`scenario-card p-4 border-2 rounded-xl cursor-pointer ${scenario === s.id ? 'selected' : 'border-gray-200'}`}
-                                        onClick={() => setScenario(s.id)}
+                                        className={`p-4 border-2 rounded-xl ${scenarioSelections[s.id]?.applicable ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}
                                     >
-                                        <div className="text-3xl mb-2">{s.icon}</div>
-                                        <h3 className="font-semibold">{s.name}</h3>
-                                        <p className="text-sm text-gray-600 mt-1">{s.desc}</p>
+                                        <div className="flex items-start justify-between">
+                                            <div className="flex items-center space-x-3">
+                                                <span className="text-2xl">{s.icon}</span>
+                                                <div>
+                                                    <h3 className="font-semibold text-gray-900">{s.name}</h3>
+                                                    <p className="text-sm text-gray-500">{s.desc}</p>
+                                                </div>
+                                            </div>
+                                            <label className="flex items-center space-x-2 cursor-pointer">
+                                                <span className={`text-sm font-medium ${scenarioSelections[s.id]?.applicable ? 'text-green-600' : 'text-gray-400'}`}>
+                                                    Applicable: {scenarioSelections[s.id]?.applicable ? 'YES' : 'NO'}
+                                                </span>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={scenarioSelections[s.id]?.applicable || false}
+                                                    onChange={(e) => setScenarioSelections(prev => ({
+                                                        ...prev,
+                                                        [s.id]: { ...prev[s.id], applicable: e.target.checked }
+                                                    }))}
+                                                    className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                />
+                                            </label>
+                                        </div>
+                                        <div className="mt-3">
+                                            <textarea
+                                                value={scenarioSelections[s.id]?.notes || ''}
+                                                onChange={(e) => setScenarioSelections(prev => ({
+                                                    ...prev,
+                                                    [s.id]: { ...prev[s.id], notes: e.target.value }
+                                                }))}
+                                                className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-blue-500 resize-none"
+                                                rows="2"
+                                                placeholder="Notes / Justification (e.g., 'The system is not expected to operate with a liquid level.')"
+                                            />
+                                        </div>
                                     </div>
                                 ))}
                             </div>
@@ -567,10 +620,22 @@
                                 <button onClick={() => setStep(1)} className="px-6 py-2 border rounded-lg font-medium hover:bg-gray-50 transition">
                                     ← Back
                                 </button>
-                                <button onClick={() => setStep(3)} className="px-6 py-2 franc-accent-bg text-white rounded-lg font-medium hover:bg-blue-700 transition">
+                                <button
+                                    onClick={() => {
+                                        // Set the first applicable scenario as the active one for calculation
+                                        const firstApplicable = Object.entries(scenarioSelections).find(([id, sel]) => sel.applicable);
+                                        if (firstApplicable) setScenario(firstApplicable[0]);
+                                        setStep(3);
+                                    }}
+                                    disabled={!Object.values(scenarioSelections).some(s => s.applicable)}
+                                    className="px-6 py-2 franc-accent-bg text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
+                                >
                                     Next: Fluid →
                                 </button>
                             </div>
+                            {!Object.values(scenarioSelections).some(s => s.applicable) && (
+                                <p className="text-sm text-red-500 mt-2 text-right">Please select at least one applicable scenario</p>
+                            )}
                         </div>
                     )}
 
@@ -800,6 +865,9 @@
                                         )}
                                         {results.deviceInfo.pid_number && (
                                             <div><span className="text-gray-500">P&ID:</span> <span className="font-semibold">{results.deviceInfo.pid_number}</span></div>
+                                        )}
+                                        {results.deviceInfo.protected_system && (
+                                            <div><span className="text-gray-500">Protected System:</span> <span className="font-semibold">{results.deviceInfo.protected_system}</span></div>
                                         )}
                                     </div>
                                 </div>
