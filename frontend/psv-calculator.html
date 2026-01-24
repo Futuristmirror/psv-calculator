@@ -23,6 +23,7 @@
         .input-field:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
         .fade-in { animation: fadeIn 0.3s ease-in; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        input::placeholder { color: #9ca3af; }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
@@ -64,13 +65,22 @@
             ngl: { name: 'NGL', composition: { ethane: 40, propane: 30, isobutane: 10, nbutane: 10, npentane: 10 }},
         };
 
-        // API 526 Orifices
+        // API 526 Orifices with inlet/outlet sizes
         const ORIFICES = [
-            { letter: 'D', area: 0.110 }, { letter: 'E', area: 0.196 }, { letter: 'F', area: 0.307 },
-            { letter: 'G', area: 0.503 }, { letter: 'H', area: 0.785 }, { letter: 'J', area: 1.287 },
-            { letter: 'K', area: 1.838 }, { letter: 'L', area: 2.853 }, { letter: 'M', area: 3.600 },
-            { letter: 'N', area: 4.340 }, { letter: 'P', area: 6.380 }, { letter: 'Q', area: 11.05 },
-            { letter: 'R', area: 16.00 }, { letter: 'T', area: 26.00 },
+            { letter: 'D', area: 0.110, inlet: '1"', outlet: '2"', size: '1 D 2' },
+            { letter: 'E', area: 0.196, inlet: '1"', outlet: '2"', size: '1 E 2' },
+            { letter: 'F', area: 0.307, inlet: '1.5"', outlet: '2"', size: '1½ F 2' },
+            { letter: 'G', area: 0.503, inlet: '1.5"', outlet: '3"', size: '1½ G 3' },
+            { letter: 'H', area: 0.785, inlet: '1.5"', outlet: '3"', size: '1½ H 3' },
+            { letter: 'J', area: 1.287, inlet: '2"', outlet: '3"', size: '2 J 3' },
+            { letter: 'K', area: 1.838, inlet: '3"', outlet: '4"', size: '3 K 4' },
+            { letter: 'L', area: 2.853, inlet: '3"', outlet: '4"', size: '3 L 4' },
+            { letter: 'M', area: 3.600, inlet: '4"', outlet: '6"', size: '4 M 6' },
+            { letter: 'N', area: 4.340, inlet: '4"', outlet: '6"', size: '4 N 6' },
+            { letter: 'P', area: 6.380, inlet: '4"', outlet: '6"', size: '4 P 6' },
+            { letter: 'Q', area: 11.05, inlet: '6"', outlet: '8"', size: '6 Q 8' },
+            { letter: 'R', area: 16.00, inlet: '6"', outlet: '8"', size: '6 R 8' },
+            { letter: 'T', area: 26.00, inlet: '8"', outlet: '10"', size: '8 T 10' },
         ];
 
         // Scenarios
@@ -238,6 +248,9 @@
                 required_area: A_required,
                 selected_orifice: selectedOrifice.letter,
                 orifice_area: selectedOrifice.area,
+                orifice_size: selectedOrifice.size,
+                orifice_inlet: selectedOrifice.inlet,
+                orifice_outlet: selectedOrifice.outlet,
                 utilization,
                 heat_input: Q_fire,
                 wetted_area,
@@ -247,6 +260,19 @@
         // Main App Component
         function PSVCalculator() {
             const [step, setStep] = useState(1);
+
+            // Step 1: Device Info
+            const [deviceInfo, setDeviceInfo] = useState({
+                tag: '',
+                pid_number: '',
+                facility_name: '',
+                selected_orifice: '',
+                new_or_existing: 'new',
+                discharge_location: 'atmosphere',
+                mawp: '',
+                set_pressure: '',
+            });
+
             const [preset, setPreset] = useState('');
             const [composition, setComposition] = useState({});
             const [conditions, setConditions] = useState({
@@ -254,7 +280,6 @@
                 tempUnit: 'F',
                 pressure: 150,
                 pressureUnit: 'psig',
-                set_pressure: 150,
                 back_pressure: 0,
                 latent_heat: 150,
                 flow_rate: 10000,
@@ -267,7 +292,6 @@
             });
             const [scenario, setScenario] = useState('fire_wetted');
             const [results, setResults] = useState(null);
-            const [showUpgrade, setShowUpgrade] = useState(false);
 
             // Handle preset selection
             const handlePresetChange = (presetId) => {
@@ -298,18 +322,20 @@
 
                 const props = calculateProperties(composition, T_F, P_psig);
                 const sizing = sizePSV(scenario, props, {
-                    set_pressure: conditions.set_pressure,
+                    set_pressure: parseFloat(deviceInfo.set_pressure) || 150,
                     back_pressure: conditions.back_pressure,
                     temperature: T_F,
                     latent_heat: conditions.latent_heat,
                     flow_rate: conditions.flow_rate,
                 }, vessel);
 
-                setResults({ ...props, ...sizing });
-                setStep(4);
+                setResults({ ...props, ...sizing, deviceInfo });
+                setStep(5);
             };
 
             const totalMol = Object.values(composition).reduce((a, b) => a + (b || 0), 0);
+
+            const STEP_LABELS = ['Device', 'Fluid', 'Conditions', 'Scenario', 'Results'];
 
             return (
                 <div className="max-w-4xl mx-auto p-4 sm:p-6">
@@ -321,34 +347,156 @@
                     </div>
 
                     {/* Progress Steps */}
-                    <div className="flex justify-center mb-8">
-                        <div className="flex items-center space-x-2 sm:space-x-4">
-                            {[1, 2, 3, 4].map((s) => (
+                    <div className="flex justify-center mb-6">
+                        <div className="flex items-center space-x-1 sm:space-x-2">
+                            {[1, 2, 3, 4, 5].map((s) => (
                                 <React.Fragment key={s}>
                                     <div
-                                        className={`step-indicator w-10 h-10 rounded-full flex items-center justify-center font-semibold cursor-pointer
+                                        className={`step-indicator w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-semibold cursor-pointer text-sm sm:text-base
                                             ${step >= s ? 'franc-accent-bg text-white' : 'bg-gray-200 text-gray-500'}
                                             ${step === s ? 'active ring-4 ring-blue-200' : ''}`}
                                         onClick={() => s < step && setStep(s)}
                                     >
                                         {s}
                                     </div>
-                                    {s < 4 && <div className={`w-8 sm:w-16 h-1 ${step > s ? 'franc-accent-bg' : 'bg-gray-200'}`}></div>}
+                                    {s < 5 && <div className={`w-4 sm:w-8 h-1 ${step > s ? 'franc-accent-bg' : 'bg-gray-200'}`}></div>}
                                 </React.Fragment>
                             ))}
                         </div>
                     </div>
 
                     {/* Step Labels */}
-                    <div className="flex justify-between mb-8 text-xs sm:text-sm text-gray-500 px-4">
-                        <span className={step === 1 ? 'font-semibold franc-accent' : ''}>Fluid</span>
-                        <span className={step === 2 ? 'font-semibold franc-accent' : ''}>Conditions</span>
-                        <span className={step === 3 ? 'font-semibold franc-accent' : ''}>Scenario</span>
-                        <span className={step === 4 ? 'font-semibold franc-accent' : ''}>Results</span>
+                    <div className="flex justify-between mb-8 text-xs sm:text-sm text-gray-500 px-2">
+                        {STEP_LABELS.map((label, idx) => (
+                            <span key={label} className={step === idx + 1 ? 'font-semibold franc-accent' : ''}>{label}</span>
+                        ))}
                     </div>
 
-                    {/* Step 1: Fluid Selection */}
+                    {/* Step 1: Device Info */}
                     {step === 1 && (
+                        <div className="fade-in bg-white rounded-xl shadow-lg p-6">
+                            <h2 className="text-xl font-semibold mb-4">Relief Device Information</h2>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                {/* Relief Device Tag */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Relief Device Tag</label>
+                                    <input
+                                        type="text"
+                                        value={deviceInfo.tag}
+                                        onChange={(e) => setDeviceInfo({...deviceInfo, tag: e.target.value})}
+                                        className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                        placeholder="PSV-123"
+                                    />
+                                </div>
+
+                                {/* P&ID Number */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">P&ID Number</label>
+                                    <input
+                                        type="text"
+                                        value={deviceInfo.pid_number}
+                                        onChange={(e) => setDeviceInfo({...deviceInfo, pid_number: e.target.value})}
+                                        className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                        placeholder="PID-001"
+                                    />
+                                </div>
+
+                                {/* Facility Name */}
+                                <div className="sm:col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Facility Name</label>
+                                    <input
+                                        type="text"
+                                        value={deviceInfo.facility_name}
+                                        onChange={(e) => setDeviceInfo({...deviceInfo, facility_name: e.target.value})}
+                                        className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                        placeholder="Enter facility name"
+                                    />
+                                </div>
+
+                                {/* Relief Device Selection (API Orifice) */}
+                                <div className="sm:col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Relief Device Selection (if known)</label>
+                                    <select
+                                        value={deviceInfo.selected_orifice}
+                                        onChange={(e) => setDeviceInfo({...deviceInfo, selected_orifice: e.target.value})}
+                                        className="w-full px-3 py-2 border rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                                    >
+                                        <option value="">-- Calculate Required Size --</option>
+                                        {ORIFICES.map((o) => (
+                                            <option key={o.letter} value={o.letter}>
+                                                {o.size} — Orifice {o.letter} ({o.area} in²) — Inlet: {o.inlet}, Outlet: {o.outlet}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="text-xs text-gray-500 mt-1">Leave blank to calculate required orifice size</p>
+                                </div>
+
+                                {/* New or Existing */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">New or Existing</label>
+                                    <select
+                                        value={deviceInfo.new_or_existing}
+                                        onChange={(e) => setDeviceInfo({...deviceInfo, new_or_existing: e.target.value})}
+                                        className="w-full px-3 py-2 border rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                                    >
+                                        <option value="new">New Installation</option>
+                                        <option value="existing">Existing Device</option>
+                                    </select>
+                                </div>
+
+                                {/* Discharge Location */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Discharge Location</label>
+                                    <select
+                                        value={deviceInfo.discharge_location}
+                                        onChange={(e) => setDeviceInfo({...deviceInfo, discharge_location: e.target.value})}
+                                        className="w-full px-3 py-2 border rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                                    >
+                                        <option value="atmosphere">Atmosphere</option>
+                                        <option value="flare">Flare</option>
+                                    </select>
+                                </div>
+
+                                {/* Protected MAWP */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Protected System MAWP (psig)</label>
+                                    <input
+                                        type="number"
+                                        value={deviceInfo.mawp}
+                                        onChange={(e) => setDeviceInfo({...deviceInfo, mawp: e.target.value})}
+                                        className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                        placeholder="285"
+                                    />
+                                </div>
+
+                                {/* PSV Set Pressure */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">PSV Set Pressure (psig)</label>
+                                    <input
+                                        type="number"
+                                        value={deviceInfo.set_pressure}
+                                        onChange={(e) => setDeviceInfo({...deviceInfo, set_pressure: e.target.value})}
+                                        className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                        placeholder="285"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">Typically equal to or less than MAWP</p>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end mt-6">
+                                <button
+                                    onClick={() => setStep(2)}
+                                    className="px-6 py-2 franc-accent-bg text-white rounded-lg font-medium hover:bg-blue-700 transition"
+                                >
+                                    Next: Fluid →
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Step 2: Fluid Selection */}
+                    {step === 2 && (
                         <div className="fade-in bg-white rounded-xl shadow-lg p-6">
                             <h2 className="text-xl font-semibold mb-4">Select Fluid</h2>
 
@@ -396,9 +544,12 @@
                                 </div>
                             </div>
 
-                            <div className="flex justify-end mt-6">
+                            <div className="flex justify-between mt-6">
+                                <button onClick={() => setStep(1)} className="px-6 py-2 border rounded-lg font-medium hover:bg-gray-50 transition">
+                                    ← Back
+                                </button>
                                 <button
-                                    onClick={() => setStep(2)}
+                                    onClick={() => setStep(3)}
                                     disabled={totalMol < 99}
                                     className="px-6 py-2 franc-accent-bg text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
                                 >
@@ -408,15 +559,15 @@
                         </div>
                     )}
 
-                    {/* Step 2: Operating Conditions */}
-                    {step === 2 && (
+                    {/* Step 3: Operating Conditions */}
+                    {step === 3 && (
                         <div className="fade-in bg-white rounded-xl shadow-lg p-6">
                             <h2 className="text-xl font-semibold mb-4">Operating Conditions</h2>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                                 {/* Temperature */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Temperature</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Relieving Temperature</label>
                                     <div className="flex space-x-2">
                                         <input
                                             type="number"
@@ -459,17 +610,6 @@
                                     </div>
                                 </div>
 
-                                {/* Set Pressure */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">PSV Set Pressure (psig)</label>
-                                    <input
-                                        type="number"
-                                        value={conditions.set_pressure}
-                                        onChange={(e) => setConditions({...conditions, set_pressure: parseFloat(e.target.value)})}
-                                        className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
-                                    />
-                                </div>
-
                                 {/* Back Pressure */}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Back Pressure (psig)</label>
@@ -495,7 +635,7 @@
 
                                 {/* Flow Rate */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Flow Rate (lb/hr)</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Relief Flow Rate (lb/hr)</label>
                                     <input
                                         type="number"
                                         value={conditions.flow_rate}
@@ -554,18 +694,18 @@
                             </div>
 
                             <div className="flex justify-between mt-6">
-                                <button onClick={() => setStep(1)} className="px-6 py-2 border rounded-lg font-medium hover:bg-gray-50 transition">
+                                <button onClick={() => setStep(2)} className="px-6 py-2 border rounded-lg font-medium hover:bg-gray-50 transition">
                                     ← Back
                                 </button>
-                                <button onClick={() => setStep(3)} className="px-6 py-2 franc-accent-bg text-white rounded-lg font-medium hover:bg-blue-700 transition">
+                                <button onClick={() => setStep(4)} className="px-6 py-2 franc-accent-bg text-white rounded-lg font-medium hover:bg-blue-700 transition">
                                     Next: Scenario →
                                 </button>
                             </div>
                         </div>
                     )}
 
-                    {/* Step 3: Scenario Selection */}
-                    {step === 3 && (
+                    {/* Step 4: Scenario Selection */}
+                    {step === 4 && (
                         <div className="fade-in bg-white rounded-xl shadow-lg p-6">
                             <h2 className="text-xl font-semibold mb-4">Select Relief Scenario</h2>
 
@@ -584,7 +724,7 @@
                             </div>
 
                             <div className="flex justify-between mt-6">
-                                <button onClick={() => setStep(2)} className="px-6 py-2 border rounded-lg font-medium hover:bg-gray-50 transition">
+                                <button onClick={() => setStep(3)} className="px-6 py-2 border rounded-lg font-medium hover:bg-gray-50 transition">
                                     ← Back
                                 </button>
                                 <button onClick={calculate} className="px-6 py-2 franc-accent-bg text-white rounded-lg font-medium hover:bg-blue-700 transition">
@@ -594,9 +734,26 @@
                         </div>
                     )}
 
-                    {/* Step 4: Results */}
-                    {step === 4 && results && (
+                    {/* Step 5: Results */}
+                    {step === 5 && results && (
                         <div className="fade-in space-y-6">
+                            {/* Device Header */}
+                            {(results.deviceInfo?.tag || results.deviceInfo?.facility_name) && (
+                                <div className="bg-gray-100 rounded-xl p-4">
+                                    <div className="flex flex-wrap gap-4 text-sm">
+                                        {results.deviceInfo.tag && (
+                                            <div><span className="text-gray-500">Tag:</span> <span className="font-semibold">{results.deviceInfo.tag}</span></div>
+                                        )}
+                                        {results.deviceInfo.facility_name && (
+                                            <div><span className="text-gray-500">Facility:</span> <span className="font-semibold">{results.deviceInfo.facility_name}</span></div>
+                                        )}
+                                        {results.deviceInfo.pid_number && (
+                                            <div><span className="text-gray-500">P&ID:</span> <span className="font-semibold">{results.deviceInfo.pid_number}</span></div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Main Results Card */}
                             <div className="bg-white rounded-xl shadow-lg p-6">
                                 <div className="flex justify-between items-start mb-4">
@@ -610,9 +767,10 @@
                                 <div className="bg-blue-50 rounded-xl p-6 mb-6 text-center">
                                     <p className="text-sm text-gray-600 mb-1">Selected Orifice</p>
                                     <p className="text-5xl font-bold franc-accent mb-2">{results.selected_orifice}</p>
-                                    <p className="text-lg text-gray-700">{results.orifice_area} in²</p>
+                                    <p className="text-lg text-gray-700">{results.orifice_size}</p>
+                                    <p className="text-md text-gray-600">Inlet: {results.orifice_inlet} | Outlet: {results.orifice_outlet}</p>
                                     <p className="text-sm text-gray-500 mt-2">
-                                        {results.utilization.toFixed(1)}% utilized ({results.required_area.toFixed(4)} in² required)
+                                        {results.orifice_area} in² — {results.utilization.toFixed(1)}% utilized ({results.required_area.toFixed(4)} in² required)
                                     </p>
                                 </div>
 
@@ -708,7 +866,7 @@
                                 <button onClick={() => setStep(1)} className="px-6 py-2 border bg-white rounded-lg font-medium hover:bg-gray-50 transition">
                                     ← Start Over
                                 </button>
-                                <button onClick={() => setStep(3)} className="px-6 py-2 border bg-white rounded-lg font-medium hover:bg-gray-50 transition">
+                                <button onClick={() => setStep(4)} className="px-6 py-2 border bg-white rounded-lg font-medium hover:bg-gray-50 transition">
                                     ← Modify Scenario
                                 </button>
                             </div>
