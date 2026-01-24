@@ -91,10 +91,10 @@
 
         // Scenarios - Updated per user request
         const SCENARIOS = [
-            { id: 'fire_wetted', name: 'Fire-Wetted (Liquid Boil up)', icon: '🔥', desc: 'Pool fire on vessel with liquid inventory causing vaporization' },
-            { id: 'fire_unwetted', name: 'Fire Unwetted (Vapor)', icon: '💨', desc: 'Fire exposure on vapor space only' },
-            { id: 'blocked_vapor', name: 'Blocked Outlet - Vapor', icon: '⛔', desc: 'Blocked vapor outlet with upstream source' },
-            { id: 'cv_failure', name: 'CV Failure - Vapor', icon: '⚠️', desc: 'Control valve fails open, vapor service' },
+            { id: 'fire_wetted', name: 'Fire-Wetted (Liquid Boil up)', icon: '🔥', desc: 'Pool fire on vessel with liquid inventory causing vaporization', compLabel: 'Fire-Wetted Liquid Composition' },
+            { id: 'fire_unwetted', name: 'Fire Unwetted (Vapor)', icon: '💨', desc: 'Fire exposure on vapor space only', compLabel: 'Fire Unwetted Vapor Composition' },
+            { id: 'blocked_vapor', name: 'Blocked Outlet - Vapor', icon: '⛔', desc: 'Blocked vapor outlet with upstream source', compLabel: 'Blocked Outlet Vapor Composition' },
+            { id: 'cv_failure', name: 'CV Failure - Vapor', icon: '⚠️', desc: 'Control valve fails open, vapor service', compLabel: 'CV Failure Vapor Composition' },
         ];
 
         // Simplified Peng-Robinson calculations (client-side)
@@ -339,7 +339,13 @@
             const [miscFile, setMiscFile] = useState(null);
 
             const [preset, setPreset] = useState('');
-            const [composition, setComposition] = useState({});
+            // Compositions keyed by scenario ID
+            const [compositions, setCompositions] = useState({
+                fire_wetted: {},
+                fire_unwetted: {},
+                blocked_vapor: {},
+                cv_failure: {},
+            });
             const [conditions, setConditions] = useState({
                 temperature: 100,
                 tempUnit: 'F',
@@ -358,18 +364,43 @@
             const [scenario, setScenario] = useState('fire_wetted');
             const [results, setResults] = useState(null);
 
-            const handlePresetChange = (presetId) => {
+            // Get list of applicable scenarios
+            const applicableScenarios = SCENARIOS.filter(s => scenarioSelections[s.id]?.applicable);
+
+            // Apply preset to a specific scenario's composition
+            const handlePresetChange = (presetId, scenarioId) => {
                 setPreset(presetId);
                 if (PRESETS[presetId]) {
-                    setComposition(PRESETS[presetId].composition);
+                    setCompositions(prev => ({
+                        ...prev,
+                        [scenarioId]: PRESETS[presetId].composition
+                    }));
                 }
             };
 
-            const handleCompChange = (comp, value) => {
-                setComposition(prev => ({
+            // Update composition for a specific scenario
+            const handleCompChange = (scenarioId, comp, value) => {
+                setCompositions(prev => ({
                     ...prev,
-                    [comp]: parseFloat(value) || 0
+                    [scenarioId]: {
+                        ...prev[scenarioId],
+                        [comp]: parseFloat(value) || 0
+                    }
                 }));
+            };
+
+            // Copy composition from first applicable scenario to another
+            const copyCompositionFrom = (fromScenarioId, toScenarioId) => {
+                setCompositions(prev => ({
+                    ...prev,
+                    [toScenarioId]: { ...prev[fromScenarioId] }
+                }));
+            };
+
+            // Calculate total mol% for a specific scenario
+            const getTotalMol = (scenarioId) => {
+                const comp = compositions[scenarioId] || {};
+                return Object.values(comp).reduce((a, b) => a + (b || 0), 0);
             };
 
             const calculate = () => {
@@ -382,7 +413,9 @@
                                conditions.pressureUnit === 'kPa' ? conditions.pressure * 0.145038 - 14.7 :
                                conditions.pressure;
 
-                const props = calculateProperties(composition, T_F, P_psig);
+                // Use composition for the selected scenario
+                const scenarioComp = compositions[scenario] || {};
+                const props = calculateProperties(scenarioComp, T_F, P_psig);
                 const sizing = sizePSV(scenario, props, {
                     set_pressure: parseFloat(deviceInfo.set_pressure) || 150,
                     back_pressure: conditions.back_pressure,
@@ -391,11 +424,12 @@
                     flow_rate: conditions.flow_rate,
                 }, vessel);
 
-                setResults({ ...props, ...sizing, deviceInfo });
+                setResults({ ...props, ...sizing, deviceInfo, compositions });
                 setStep(5);
             };
 
-            const totalMol = Object.values(composition).reduce((a, b) => a + (b || 0), 0);
+            // Check if all applicable scenarios have valid compositions (>=99%)
+            const allCompositionsValid = applicableScenarios.every(s => getTotalMol(s.id) >= 99);
 
             // Updated step order: Device -> Scenario -> Fluid -> Conditions -> Results
             const STEP_LABELS = ['Device', 'Scenario', 'Fluid', 'Conditions', 'Results'];
@@ -695,50 +729,79 @@
                     {/* Step 3: Fluid Selection */}
                     {step === 3 && (
                         <div className="fade-in bg-white rounded-xl shadow-lg p-6">
-                            <h2 className="text-xl font-semibold mb-4">Select Fluid</h2>
+                            <h2 className="text-xl font-semibold mb-2">Select Fluid Compositions</h2>
+                            <p className="text-sm text-gray-600 mb-6">
+                                Enter composition for each applicable scenario.
+                                {applicableScenarios.length > 1 && " Use 'Copy from first' to duplicate the first composition."}
+                            </p>
 
-                            {/* Presets */}
-                            <div className="mb-6">
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Quick Select</label>
-                                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                                    {Object.entries(PRESETS).map(([id, p]) => (
-                                        <button
-                                            key={id}
-                                            className={`px-3 py-2 rounded-lg text-sm font-medium transition
-                                                ${preset === id ? 'franc-accent-bg text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}`}
-                                            onClick={() => handlePresetChange(id)}
-                                        >
-                                            {p.name}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
+                            {/* Scenario Composition Sections */}
+                            <div className="space-y-6">
+                                {applicableScenarios.map((scenarioItem, idx) => {
+                                    const scenarioComp = compositions[scenarioItem.id] || {};
+                                    const scenarioTotal = getTotalMol(scenarioItem.id);
+                                    const isFirst = idx === 0;
+                                    const firstScenarioId = applicableScenarios[0]?.id;
 
-                            {/* Composition List */}
-                            <div className="mb-4">
-                                <div className="flex justify-between items-center mb-3">
-                                    <label className="block text-sm font-medium text-gray-700">Composition (mol%)</label>
-                                    <span className={`text-sm font-medium ${Math.abs(totalMol - 100) < 0.1 ? 'text-green-600' : 'text-red-500'}`}>
-                                        Total: {totalMol.toFixed(1)}%
-                                    </span>
-                                </div>
-                                <div className="space-y-2 max-h-96 overflow-y-auto pr-2">
-                                    {Object.entries(COMPONENTS).map(([id, comp]) => (
-                                        <div key={id} className="flex items-center justify-between py-1 border-b border-gray-100">
-                                            <label className="text-sm text-gray-700">{comp.name} ({comp.formula})</label>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                max="100"
-                                                step="0.1"
-                                                value={composition[id] || ''}
-                                                onChange={(e) => handleCompChange(id, e.target.value)}
-                                                className="input-field w-24 px-3 py-1.5 border rounded text-sm text-right focus:outline-none"
-                                                placeholder="0"
-                                            />
+                                    return (
+                                        <div key={scenarioItem.id} className="border rounded-xl p-4">
+                                            {/* Scenario Header */}
+                                            <div className="flex justify-between items-center mb-4">
+                                                <div className="flex items-center space-x-2">
+                                                    <span className="text-xl">{scenarioItem.icon}</span>
+                                                    <h3 className="font-semibold text-gray-900">{scenarioItem.compLabel}</h3>
+                                                </div>
+                                                <div className="flex items-center space-x-3">
+                                                    {!isFirst && (
+                                                        <button
+                                                            onClick={() => copyCompositionFrom(firstScenarioId, scenarioItem.id)}
+                                                            className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition"
+                                                        >
+                                                            Copy from first
+                                                        </button>
+                                                    )}
+                                                    <span className={`text-sm font-medium ${Math.abs(scenarioTotal - 100) < 0.1 ? 'text-green-600' : 'text-red-500'}`}>
+                                                        Total: {scenarioTotal.toFixed(1)}%
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {/* Presets for this scenario */}
+                                            <div className="mb-4">
+                                                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                                                    {Object.entries(PRESETS).map(([presetId, p]) => (
+                                                        <button
+                                                            key={presetId}
+                                                            className="px-2 py-1.5 rounded text-xs font-medium transition bg-gray-100 hover:bg-gray-200 text-gray-700"
+                                                            onClick={() => handlePresetChange(presetId, scenarioItem.id)}
+                                                        >
+                                                            {p.name}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* Composition List for this scenario */}
+                                            <div className="space-y-1 max-h-64 overflow-y-auto pr-2">
+                                                {Object.entries(COMPONENTS).map(([compId, comp]) => (
+                                                    <div key={compId} className="flex items-center justify-between py-1 border-b border-gray-100">
+                                                        <label className="text-sm text-gray-700">{comp.name} ({comp.formula})</label>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            max="100"
+                                                            step="0.1"
+                                                            value={scenarioComp[compId] || ''}
+                                                            onChange={(e) => handleCompChange(scenarioItem.id, compId, e.target.value)}
+                                                            className="input-field w-24 px-3 py-1.5 border rounded text-sm text-right focus:outline-none"
+                                                            placeholder="0"
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
-                                    ))}
-                                </div>
+                                    );
+                                })}
                             </div>
 
                             <div className="flex justify-between mt-6">
@@ -747,12 +810,15 @@
                                 </button>
                                 <button
                                     onClick={() => setStep(4)}
-                                    disabled={totalMol < 99}
+                                    disabled={!allCompositionsValid}
                                     className="px-6 py-2 franc-accent-bg text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
                                 >
                                     Next: Conditions →
                                 </button>
                             </div>
+                            {!allCompositionsValid && (
+                                <p className="text-sm text-red-500 mt-2 text-right">All compositions must total at least 99%</p>
+                            )}
                         </div>
                     )}
 
