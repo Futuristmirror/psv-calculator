@@ -732,10 +732,19 @@
 
             // Generate PDF Report
             const generateReport = () => {
-                if (!results) return;
+                if (!results) {
+                    alert('No results to generate report. Please complete calculations first.');
+                    return;
+                }
 
-                const { jsPDF } = window.jspdf;
-                const doc = new jsPDF();
+                try {
+                    if (!window.jspdf) {
+                        alert('PDF library not loaded. Please refresh the page and try again.');
+                        return;
+                    }
+
+                    const { jsPDF } = window.jspdf;
+                    const doc = new jsPDF();
                 const pageWidth = doc.internal.pageSize.getWidth();
                 const pageHeight = doc.internal.pageSize.getHeight();
                 const margin = 20;
@@ -1001,6 +1010,10 @@
                 // Save the PDF
                 const filename = `PSV_Report_${deviceInfo.tag || 'Unnamed'}_${new Date().toISOString().split('T')[0]}.pdf`;
                 doc.save(filename);
+                } catch (error) {
+                    console.error('PDF generation error:', error);
+                    alert('Error generating PDF: ' + error.message);
+                }
             };
 
             // Check if all applicable scenarios have valid compositions (>=99%)
@@ -2289,10 +2302,16 @@
                                             <li>✓ PE stamp (TX/CO)</li>
                                             <li>✓ 48-72 hour delivery</li>
                                         </ul>
-                                        <a href="mailto:caseym@franceng.com?subject=PSV%20PE-Reviewed%20Report%20Request"
-                                           className="block text-center py-2 bg-yellow-400 text-blue-900 rounded-lg font-medium hover:bg-yellow-300 transition">
+                                        <button
+                                           onClick={() => {
+                                               // TODO: Replace with actual Stripe checkout URL
+                                               // window.location.href = 'https://checkout.stripe.com/your-checkout-link';
+                                               alert('Stripe checkout coming soon! For now, please email caseym@franceng.com');
+                                               window.location.href = 'mailto:caseym@franceng.com?subject=PSV%20PE-Reviewed%20Report%20Request&body=I%20would%20like%20to%20request%20a%20PE-Reviewed%20PSV%20Sizing%20Report.';
+                                           }}
+                                           className="w-full py-2 bg-yellow-400 text-blue-900 rounded-lg font-medium hover:bg-yellow-300 transition">
                                             Request Quote
-                                        </a>
+                                        </button>
                                     </div>
 
                                     <div className="bg-white/10 rounded-lg p-4">
@@ -2304,10 +2323,14 @@
                                             <li>✓ Multiple scenarios</li>
                                             <li>✓ Turnkey solution</li>
                                         </ul>
-                                        <a href="https://franceng.com/contact/" target="_blank"
-                                           className="block text-center py-2 bg-white text-blue-600 rounded-lg font-medium hover:bg-blue-50 transition">
+                                        <button
+                                           onClick={() => {
+                                               window.open('https://franceng.com/contact/', '_blank');
+                                               window.location.href = 'mailto:caseym@franceng.com?subject=PSV%20Sizing%20Services%20Inquiry';
+                                           }}
+                                           className="w-full py-2 bg-white text-blue-600 rounded-lg font-medium hover:bg-blue-50 transition">
                                             Contact Us
-                                        </a>
+                                        </button>
                                     </div>
                                 </div>
                             </div>
