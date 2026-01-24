@@ -348,18 +348,28 @@
                 cv_failure: {},
             });
 
+            // Vessel details (shared between fire scenarios)
+            const [vesselDetails, setVesselDetails] = useState({
+                equipment_tag: '',
+                orientation: 'horizontal',
+                head_type: '2:1_elliptical',
+                inner_diameter: 48, // inches
+                seam_to_seam: 10, // ft
+                height_above_grade: 2, // ft
+                max_liquid_level: 50, // %
+                additional_area: 0, // ft² (can be negative to exclude)
+            });
+
             // Scenario-specific conditions
             const [scenarioConditions, setScenarioConditions] = useState({
                 fire_wetted: {
                     normal_op_pressure: 80,
                     normal_op_temp: 125,
-                    wetted_area: 0,
                     latent_heat: 150,
                 },
                 fire_unwetted: {
                     normal_op_pressure: 80,
                     normal_op_temp: 125,
-                    unwetted_area: 0,
                 },
                 blocked_vapor: {
                     source_pressure: 200,
@@ -427,6 +437,76 @@
                 // PV = nRT, n = qm/M, convert to scf/day then MMscfd
                 const scf_per_hr = (qm_lb_hr / M) * 10.73 * (520) / 14.696; // at standard conditions
                 return (scf_per_hr * 24) / 1e6;
+            };
+
+            // Calculate vessel surface areas
+            const calcVesselAreas = (vessel) => {
+                const D_ft = vessel.inner_diameter / 12; // Convert inches to feet
+                const R_ft = D_ft / 2;
+                const L_ft = vessel.seam_to_seam;
+                const liquidFrac = vessel.max_liquid_level / 100;
+
+                // Head surface area (each head)
+                let headArea = 0;
+                if (vessel.head_type === '2:1_elliptical') {
+                    // 2:1 elliptical head area ≈ 1.09 * π * R²
+                    headArea = 1.09 * Math.PI * R_ft * R_ft;
+                } else if (vessel.head_type === 'hemispherical') {
+                    // Hemisphere area = 2 * π * R²
+                    headArea = 2 * Math.PI * R_ft * R_ft;
+                } else if (vessel.head_type === 'flat') {
+                    // Flat head area = π * R²
+                    headArea = Math.PI * R_ft * R_ft;
+                }
+                // 'none' = 0
+
+                const totalHeadArea = 2 * headArea;
+                const shellArea = Math.PI * D_ft * L_ft;
+                const totalArea = shellArea + totalHeadArea;
+
+                // For horizontal vessel, calculate wetted/unwetted based on liquid level
+                let wettedArea = 0;
+                let unwettedArea = 0;
+
+                if (vessel.orientation === 'horizontal') {
+                    // Approximate wetted shell area for horizontal cylinder
+                    const h = liquidFrac * D_ft;
+                    const theta = 2 * Math.acos(Math.max(-1, Math.min(1, (R_ft - h) / R_ft)));
+                    const wettedShellFrac = theta / (2 * Math.PI);
+                    const wettedShell = wettedShellFrac * shellArea;
+                    const wettedHeads = wettedShellFrac * totalHeadArea;
+                    wettedArea = wettedShell + wettedHeads;
+                    unwettedArea = totalArea - wettedArea;
+                } else {
+                    // Vertical vessel
+                    const liquidHeight = liquidFrac * L_ft;
+                    const wettedShell = Math.PI * D_ft * liquidHeight;
+                    const wettedHead = headArea; // Bottom head
+                    wettedArea = wettedShell + wettedHead;
+                    unwettedArea = totalArea - wettedArea;
+                }
+
+                // Apply additional area adjustment
+                const adjustedUnwetted = Math.max(0, unwettedArea + vessel.additional_area);
+                const adjustedWetted = Math.max(0, wettedArea + vessel.additional_area);
+
+                return {
+                    total: totalArea,
+                    shell: shellArea,
+                    heads: totalHeadArea,
+                    wetted: wettedArea,
+                    unwetted: unwettedArea,
+                    adjustedUnwetted,
+                    adjustedWetted,
+                };
+            };
+
+            // Update vessel details
+            const updateVesselDetail = (field, value) => {
+                setVesselDetails(prev => ({
+                    ...prev,
+                    [field]: typeof value === 'string' ? value : (parseFloat(value) || 0)
+                }));
             };
 
             const [conditions, setConditions] = useState({
@@ -960,7 +1040,10 @@
                                 const M = getMolecularWeight(comp);
                                 const Pcrit = getCriticalPressure(comp);
                                 const T1 = calcRelievingTemp(p1_psia, cond.normal_op_pressure, cond.normal_op_temp);
-                                const qRelief = calcFireUnwettedReliefLoad(M, p1_psia, cond.unwetted_area, MAX_WALL_TEMP, T1);
+                                // Calculate surface areas from vessel geometry
+                                const vesselAreas = calcVesselAreas(vesselDetails);
+                                const unwettedArea = vesselAreas.adjustedUnwetted;
+                                const qRelief = calcFireUnwettedReliefLoad(M, p1_psia, unwettedArea, MAX_WALL_TEMP, T1);
                                 const qVol = calcVolumetricRate(qRelief, M, T1, p1_psia);
 
                                 return (
@@ -976,10 +1059,99 @@
                                             Unwetted wall vessels are those where internal walls are exposed to gas/vapor.
                                         </p>
 
-                                        {/* Equipment Details Placeholder */}
-                                        <div className="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-4 mb-6">
-                                            <h4 className="font-medium text-gray-700 mb-2">Equipment Details (Coming Soon)</h4>
-                                            <p className="text-xs text-gray-500">Vessel geometry inputs will be added here</p>
+                                        {/* Vessel Details */}
+                                        <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                                            <h4 className="font-medium text-gray-700 mb-4">Vessel Details</h4>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                {/* Equipment Tag */}
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-sm text-gray-700">Equipment Tag</span>
+                                                    <input type="text" value={vesselDetails.equipment_tag}
+                                                        onChange={(e) => updateVesselDetail('equipment_tag', e.target.value)}
+                                                        placeholder="V-123"
+                                                        className="w-28 px-3 py-1.5 bg-green-50 border border-green-300 rounded text-sm text-right focus:outline-none focus:border-green-500" />
+                                                </div>
+
+                                                {/* Orientation */}
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-sm text-gray-700">Orientation</span>
+                                                    <select value={vesselDetails.orientation}
+                                                        onChange={(e) => updateVesselDetail('orientation', e.target.value)}
+                                                        className="w-28 px-2 py-1.5 bg-green-50 border border-green-300 rounded text-sm focus:outline-none focus:border-green-500">
+                                                        <option value="horizontal">Horizontal</option>
+                                                        <option value="vertical">Vertical</option>
+                                                    </select>
+                                                </div>
+
+                                                {/* Head Type */}
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-sm text-gray-700">Head Type</span>
+                                                    <select value={vesselDetails.head_type}
+                                                        onChange={(e) => updateVesselDetail('head_type', e.target.value)}
+                                                        className="w-36 px-2 py-1.5 bg-green-50 border border-green-300 rounded text-sm focus:outline-none focus:border-green-500">
+                                                        <option value="2:1_elliptical">2:1 ELLIPTICAL</option>
+                                                        <option value="flat">FLAT</option>
+                                                        <option value="hemispherical">HEMISPHERICAL</option>
+                                                        <option value="none">NONE</option>
+                                                    </select>
+                                                </div>
+
+                                                {/* Inner Diameter */}
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-sm text-gray-700">Inner Diameter (ID)</span>
+                                                    <div className="flex items-center space-x-1">
+                                                        <input type="number" value={vesselDetails.inner_diameter}
+                                                            onChange={(e) => updateVesselDetail('inner_diameter', e.target.value)}
+                                                            className="w-20 px-3 py-1.5 bg-green-50 border border-green-300 rounded text-sm text-right focus:outline-none focus:border-green-500" />
+                                                        <span className="text-xs text-gray-500">in</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Seam-to-Seam Length/Height */}
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-sm text-gray-700">Seam-to-Seam Length/Height</span>
+                                                    <div className="flex items-center space-x-1">
+                                                        <input type="number" value={vesselDetails.seam_to_seam}
+                                                            onChange={(e) => updateVesselDetail('seam_to_seam', e.target.value)}
+                                                            className="w-20 px-3 py-1.5 bg-green-50 border border-green-300 rounded text-sm text-right focus:outline-none focus:border-green-500" />
+                                                        <span className="text-xs text-gray-500">ft</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Height Above Grade */}
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-sm text-gray-700">Height of Vessel Above Grade</span>
+                                                    <div className="flex items-center space-x-1">
+                                                        <input type="number" value={vesselDetails.height_above_grade}
+                                                            onChange={(e) => updateVesselDetail('height_above_grade', e.target.value)}
+                                                            className="w-20 px-3 py-1.5 bg-green-50 border border-green-300 rounded text-sm text-right focus:outline-none focus:border-green-500" />
+                                                        <span className="text-xs text-gray-500">ft</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Max Liquid Operating Level */}
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-sm text-gray-700">Maximum Liquid Operating Level</span>
+                                                    <div className="flex items-center space-x-1">
+                                                        <input type="number" value={vesselDetails.max_liquid_level}
+                                                            onChange={(e) => updateVesselDetail('max_liquid_level', e.target.value)}
+                                                            min="0" max="100"
+                                                            className="w-20 px-3 py-1.5 bg-green-50 border border-green-300 rounded text-sm text-right focus:outline-none focus:border-green-500" />
+                                                        <span className="text-xs text-gray-500">%</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Additional Surface Area */}
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-sm text-gray-700">Additional Area (+/-)</span>
+                                                    <div className="flex items-center space-x-1">
+                                                        <input type="number" value={vesselDetails.additional_area}
+                                                            onChange={(e) => updateVesselDetail('additional_area', e.target.value)}
+                                                            className="w-20 px-3 py-1.5 bg-green-50 border border-green-300 rounded text-sm text-right focus:outline-none focus:border-green-500" />
+                                                        <span className="text-xs text-gray-500">ft²</span>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
 
                                         <div className="space-y-2">
@@ -1059,13 +1231,27 @@
                                                 </div>
                                             </div>
 
-                                            {/* Unwetted Surface Area - Input */}
+                                            {/* Calculated Surface Areas from Vessel Geometry */}
                                             <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                                                <span className="text-sm text-gray-700">Unwetted Surface Area (A')</span>
+                                                <span className="text-sm text-gray-700">Total Vessel Surface Area</span>
                                                 <div className="flex items-center space-x-2">
-                                                    <input type="number" value={cond.unwetted_area}
-                                                        onChange={(e) => updateScenarioCondition('fire_unwetted', 'unwetted_area', e.target.value)}
-                                                        className="w-24 px-3 py-1.5 bg-green-50 border border-green-300 rounded text-sm text-right focus:outline-none focus:border-green-500" />
+                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{vesselAreas.total > 0 ? vesselAreas.total.toFixed(1) : '-'}</span>
+                                                    <span className="text-xs text-gray-500 w-12">ft²</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Wetted Surface Area</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{vesselAreas.wetted > 0 ? vesselAreas.wetted.toFixed(1) : '-'}</span>
+                                                    <span className="text-xs text-gray-500 w-12">ft²</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100 bg-blue-50 -mx-2 px-2 rounded">
+                                                <span className="text-sm font-medium text-gray-700">Unwetted Surface Area (A')</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <span className="text-sm font-bold text-blue-700 w-24 text-right">{unwettedArea > 0 ? unwettedArea.toFixed(1) : '-'}</span>
                                                     <span className="text-xs text-gray-500 w-12">ft²</span>
                                                 </div>
                                             </div>
