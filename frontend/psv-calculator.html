@@ -8,6 +8,8 @@
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; }
@@ -570,6 +572,12 @@
             const [scenario, setScenario] = useState('fire_wetted');
             const [activeConditionsTab, setActiveConditionsTab] = useState(null);
             const [results, setResults] = useState(null);
+            const [reportOptions, setReportOptions] = useState({
+                includeInputs: true,
+                includeResults: true,
+                includeCalcs: true,
+                includeAppendix: true
+            });
 
             // Get list of applicable scenarios
             const applicableScenarios = SCENARIOS.filter(s => scenarioSelections[s.id]?.applicable);
@@ -720,6 +728,279 @@
                     isUndersized
                 });
                 setStep(5);
+            };
+
+            // Generate PDF Report
+            const generateReport = () => {
+                if (!results) return;
+
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+                const pageWidth = doc.internal.pageSize.getWidth();
+                const pageHeight = doc.internal.pageSize.getHeight();
+                const margin = 20;
+                let yPos = margin;
+
+                // Helper to add new page if needed
+                const checkNewPage = (requiredSpace = 30) => {
+                    if (yPos + requiredSpace > pageHeight - margin) {
+                        doc.addPage();
+                        yPos = margin;
+                        return true;
+                    }
+                    return false;
+                };
+
+                // ========== COVER PAGE ==========
+                doc.setFillColor(30, 58, 95); // Franc blue
+                doc.rect(0, 0, pageWidth, 80, 'F');
+
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(28);
+                doc.setFont('helvetica', 'bold');
+                doc.text('PSV Sizing Report', pageWidth / 2, 40, { align: 'center' });
+
+                doc.setFontSize(14);
+                doc.setFont('helvetica', 'normal');
+                doc.text('Pressure Safety Valve Sizing per API 520/521', pageWidth / 2, 55, { align: 'center' });
+
+                doc.setTextColor(30, 58, 95);
+                yPos = 100;
+
+                // Device info on cover
+                doc.setFontSize(12);
+                doc.setFont('helvetica', 'bold');
+                doc.text('Device Information', margin, yPos);
+                yPos += 10;
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(11);
+                if (deviceInfo.tag) { doc.text(`Relief Device Tag: ${deviceInfo.tag}`, margin, yPos); yPos += 7; }
+                if (deviceInfo.pid_number) { doc.text(`P&ID Number: ${deviceInfo.pid_number}`, margin, yPos); yPos += 7; }
+                if (deviceInfo.facility_name) { doc.text(`Facility: ${deviceInfo.facility_name}`, margin, yPos); yPos += 7; }
+                if (deviceInfo.equipment_tag) { doc.text(`Equipment Tag: ${deviceInfo.equipment_tag}`, margin, yPos); yPos += 7; }
+
+                yPos += 10;
+                doc.setFont('helvetica', 'bold');
+                doc.text('Valve Details', margin, yPos);
+                yPos += 10;
+                doc.setFont('helvetica', 'normal');
+                doc.text(`Orifice Designation: ${results.selectedOrifice.letter}`, margin, yPos); yPos += 7;
+                doc.text(`Rated Area: ${results.ratedArea.toFixed(3)} in²`, margin, yPos); yPos += 7;
+                doc.text(`Set Pressure: ${deviceInfo.set_pressure} psig`, margin, yPos); yPos += 7;
+                doc.text(`Backpressure: ${deviceInfo.backpressure} psig`, margin, yPos); yPos += 7;
+
+                yPos += 20;
+
+                // Results summary box
+                doc.setFillColor(results.isUndersized ? 254 : 240, results.isUndersized ? 226 : 253, results.isUndersized ? 226 : 244);
+                doc.roundedRect(margin, yPos, pageWidth - 2 * margin, 50, 3, 3, 'F');
+
+                yPos += 15;
+                doc.setFontSize(14);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(results.isUndersized ? 220 : 22, results.isUndersized ? 38 : 163, results.isUndersized ? 38 : 74);
+                doc.text(results.isUndersized ? 'UNDERSIZED' : 'ADEQUATE', pageWidth / 2, yPos, { align: 'center' });
+
+                yPos += 12;
+                doc.setFontSize(11);
+                doc.setTextColor(60, 60, 60);
+                doc.setFont('helvetica', 'normal');
+                doc.text(`Controlling Scenario: ${results.controllingScenario.name}`, pageWidth / 2, yPos, { align: 'center' });
+                yPos += 8;
+                doc.text(`Required Area: ${results.maxRequiredArea.toFixed(4)} in² | Rated Area: ${results.ratedArea.toFixed(3)} in²`, pageWidth / 2, yPos, { align: 'center' });
+
+                // Footer on cover
+                doc.setTextColor(128, 128, 128);
+                doc.setFontSize(9);
+                doc.text('Franc Engineering | franceng.com', pageWidth / 2, pageHeight - 20, { align: 'center' });
+                doc.text(`Generated: ${new Date().toLocaleDateString()}`, pageWidth / 2, pageHeight - 14, { align: 'center' });
+
+                // ========== PAGE 2: INPUT SUMMARY ==========
+                doc.addPage();
+                yPos = margin;
+
+                doc.setTextColor(30, 58, 95);
+                doc.setFontSize(16);
+                doc.setFont('helvetica', 'bold');
+                doc.text('Input Summary', margin, yPos);
+                yPos += 15;
+
+                // Device inputs table
+                doc.autoTable({
+                    startY: yPos,
+                    head: [['Parameter', 'Value']],
+                    body: [
+                        ['Relief Device Tag', deviceInfo.tag || '-'],
+                        ['P&ID Number', deviceInfo.pid_number || '-'],
+                        ['Facility', deviceInfo.facility_name || '-'],
+                        ['Equipment Tag', deviceInfo.equipment_tag || '-'],
+                        ['Orifice Designation', results.selectedOrifice.letter],
+                        ['Set Pressure', `${deviceInfo.set_pressure} psig`],
+                        ['Backpressure', `${deviceInfo.backpressure} psig`],
+                    ],
+                    theme: 'striped',
+                    headStyles: { fillColor: [30, 58, 95] },
+                    margin: { left: margin, right: margin }
+                });
+
+                yPos = doc.lastAutoTable.finalY + 15;
+
+                // Fluid composition if available
+                const activeScenarioId = results.controllingScenario.id;
+                const comp = compositions[activeScenarioId] || {};
+                const compEntries = Object.entries(comp).filter(([_, val]) => val > 0);
+
+                if (compEntries.length > 0) {
+                    doc.setFontSize(14);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('Fluid Composition', margin, yPos);
+                    yPos += 10;
+
+                    doc.autoTable({
+                        startY: yPos,
+                        head: [['Component', 'Mol %']],
+                        body: compEntries.map(([name, val]) => [name, val.toFixed(2)]),
+                        theme: 'striped',
+                        headStyles: { fillColor: [30, 58, 95] },
+                        margin: { left: margin, right: margin }
+                    });
+                    yPos = doc.lastAutoTable.finalY + 15;
+                }
+
+                // ========== PAGE 3: RESULTS TABLE ==========
+                doc.addPage();
+                yPos = margin;
+
+                doc.setTextColor(30, 58, 95);
+                doc.setFontSize(16);
+                doc.setFont('helvetica', 'bold');
+                doc.text('Scenario Results Summary', margin, yPos);
+                yPos += 15;
+
+                const scenarioTableData = results.scenarioResults.map(r => [
+                    r.applicable ? 'Yes' : 'No',
+                    r.name,
+                    r.applicable ? r.requiredFlow.toFixed(1) : '-',
+                    r.applicable ? r.requiredArea.toFixed(4) : '-',
+                    r.applicable ? (r.requiredArea <= results.ratedArea ? 'Adequate' : 'Undersized') : '-'
+                ]);
+
+                doc.autoTable({
+                    startY: yPos,
+                    head: [['Applicable?', 'Scenario', 'Required Flow (lb/hr)', 'Required Area (in²)', 'Status']],
+                    body: scenarioTableData,
+                    theme: 'striped',
+                    headStyles: { fillColor: [30, 58, 95] },
+                    margin: { left: margin, right: margin },
+                    didParseCell: function(data) {
+                        // Bold the controlling scenario row
+                        const scenarioName = data.row.raw[1];
+                        if (scenarioName === results.controllingScenario.name && data.section === 'body') {
+                            data.cell.styles.fontStyle = 'bold';
+                        }
+                        // Color the status column
+                        if (data.column.index === 4 && data.section === 'body') {
+                            if (data.cell.raw === 'Adequate') {
+                                data.cell.styles.textColor = [22, 163, 74];
+                            } else if (data.cell.raw === 'Undersized') {
+                                data.cell.styles.textColor = [220, 38, 38];
+                            }
+                        }
+                    }
+                });
+
+                yPos = doc.lastAutoTable.finalY + 20;
+
+                // Sizing summary
+                checkNewPage(60);
+                doc.setFontSize(14);
+                doc.setFont('helvetica', 'bold');
+                doc.text('Sizing Summary', margin, yPos);
+                yPos += 10;
+
+                doc.autoTable({
+                    startY: yPos,
+                    head: [['Parameter', 'Value']],
+                    body: [
+                        ['Controlling Scenario', results.controllingScenario.name],
+                        ['Required Relief Area', `${results.maxRequiredArea.toFixed(4)} in²`],
+                        ['Installed Orifice', results.selectedOrifice.letter],
+                        ['Installed Rated Area', `${results.ratedArea.toFixed(3)} in²`],
+                        ['Utilization', `${((results.maxRequiredArea / results.ratedArea) * 100).toFixed(1)}%`],
+                        ['Status', results.isUndersized ? 'UNDERSIZED' : 'ADEQUATE'],
+                        ...(results.isUndersized ? [['Recommended Orifice', results.recommendedOrifice.letter], ['Recommended Area', `${results.recommendedOrifice.area.toFixed(3)} in²`]] : [])
+                    ],
+                    theme: 'striped',
+                    headStyles: { fillColor: [30, 58, 95] },
+                    margin: { left: margin, right: margin }
+                });
+
+                // ========== PAGE 4: CALCULATION DETAILS ==========
+                doc.addPage();
+                yPos = margin;
+
+                doc.setTextColor(30, 58, 95);
+                doc.setFontSize(16);
+                doc.setFont('helvetica', 'bold');
+                doc.text('Calculation Details', margin, yPos);
+                yPos += 15;
+
+                doc.setFontSize(10);
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(60, 60, 60);
+
+                // Add calculation methodology
+                const calcText = [
+                    'Sizing performed per API 520 Part I / API 521 6th Edition',
+                    '',
+                    'Vapor Sizing Equation (API 520):',
+                    'A = W × √(T×Z) / (C × Kd × P1 × Kb × Kc × √M)',
+                    '',
+                    'Where:',
+                    '  A = Required relief area (in²)',
+                    '  W = Mass flow rate (lb/hr)',
+                    '  T = Relieving temperature (°R)',
+                    '  Z = Compressibility factor',
+                    '  C = Coefficient from specific heat ratio k',
+                    '  Kd = Discharge coefficient (0.975 for vapor)',
+                    '  P1 = Relieving pressure absolute (psia)',
+                    '  Kb = Backpressure correction factor',
+                    '  Kc = Combination correction factor',
+                    '  M = Molecular weight (lb/lb-mol)',
+                    '',
+                    'Fire Case (API 521):',
+                    'Q = C₁ × F × A^0.82  (for wetted area)',
+                    'Q = 21000 × F × A^0.82  (for unwetted vessels)',
+                    '',
+                    'W = Q × M / λ',
+                    '',
+                    'Where:',
+                    '  Q = Heat absorption (BTU/hr)',
+                    '  F = Environment factor (1.0 for no insulation)',
+                    '  A = Wetted/Unwetted surface area (ft²)',
+                    '  λ = Latent heat of vaporization (BTU/lb)'
+                ];
+
+                calcText.forEach(line => {
+                    doc.text(line, margin, yPos);
+                    yPos += 6;
+                });
+
+                // Footer on each page
+                const pageCount = doc.internal.getNumberOfPages();
+                for (let i = 1; i <= pageCount; i++) {
+                    doc.setPage(i);
+                    doc.setFontSize(8);
+                    doc.setTextColor(128, 128, 128);
+                    doc.text(`Page ${i} of ${pageCount}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
+                    if (i > 1) {
+                        doc.text('Franc Engineering | franceng.com', pageWidth - margin, pageHeight - 10, { align: 'right' });
+                    }
+                }
+
+                // Save the PDF
+                const filename = `PSV_Report_${deviceInfo.tag || 'Unnamed'}_${new Date().toISOString().split('T')[0]}.pdf`;
+                doc.save(filename);
             };
 
             // Check if all applicable scenarios have valid compositions (>=99%)
@@ -1936,6 +2217,49 @@
                                 </div>
                             </div>
 
+                            {/* Report Options */}
+                            <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+                                <h3 className="text-lg font-semibold mb-4 franc-blue">Report Sections</h3>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                    <label className="flex items-center space-x-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={reportOptions.includeInputs}
+                                            onChange={(e) => setReportOptions({...reportOptions, includeInputs: e.target.checked})}
+                                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        />
+                                        <span className="text-sm text-gray-700">Device Inputs</span>
+                                    </label>
+                                    <label className="flex items-center space-x-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={reportOptions.includeResults}
+                                            onChange={(e) => setReportOptions({...reportOptions, includeResults: e.target.checked})}
+                                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        />
+                                        <span className="text-sm text-gray-700">Results Table</span>
+                                    </label>
+                                    <label className="flex items-center space-x-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={reportOptions.includeCalcs}
+                                            onChange={(e) => setReportOptions({...reportOptions, includeCalcs: e.target.checked})}
+                                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        />
+                                        <span className="text-sm text-gray-700">Calculations</span>
+                                    </label>
+                                    <label className="flex items-center space-x-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={reportOptions.includeAppendix}
+                                            onChange={(e) => setReportOptions({...reportOptions, includeAppendix: e.target.checked})}
+                                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        />
+                                        <span className="text-sm text-gray-700">Appendix/Uploads</span>
+                                    </label>
+                                </div>
+                            </div>
+
                             {/* Professional Reports & Services */}
                             <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-xl shadow-lg p-6 text-white">
                                 <h3 className="text-xl font-semibold mb-2">Professional Reports & Services</h3>
@@ -1951,7 +2275,7 @@
                                             <li>✓ Auto-generated PDF</li>
                                             <li>✓ All inputs documented</li>
                                         </ul>
-                                        <button className="w-full py-2 bg-white text-blue-600 rounded-lg font-medium hover:bg-blue-50 transition">
+                                        <button onClick={generateReport} className="w-full py-2 bg-white text-blue-600 rounded-lg font-medium hover:bg-blue-50 transition">
                                             Generate Report
                                         </button>
                                     </div>
