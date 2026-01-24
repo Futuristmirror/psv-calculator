@@ -1054,11 +1054,33 @@
                                 const M = getMolecularWeight(comp);
                                 const Pcrit = getCriticalPressure(comp);
                                 const T1 = calcRelievingTemp(p1_psia, cond.normal_op_pressure, cond.normal_op_temp);
-                                // Calculate surface areas from vessel geometry
-                                const vesselAreas = calcVesselAreas(vesselDetails);
+                                // Calculate surface areas from vessel geometry (force 0% liquid for fire unwetted)
+                                const vesselAreas = calcVesselAreas({ ...vesselDetails, max_liquid_level: 0 });
                                 const unwettedArea = vesselAreas.adjustedUnwetted;
                                 const qRelief = calcFireUnwettedReliefLoad(M, p1_psia, unwettedArea, MAX_WALL_TEMP, T1);
                                 const qVol = calcVolumetricRate(qRelief, M, T1, p1_psia);
+
+                                // Calculate required area using API 520 vapor equation
+                                // A = W * sqrt(T*Z) / (C * Kd * P1 * Kb * sqrt(M))
+                                const Kd = 0.975; // Coefficient of discharge for vapor
+                                const Kb = 1.0; // Back pressure correction (assume atmospheric discharge)
+                                const T1_R = T1 + 459.67;
+                                const Z = 1.0; // Simplified compressibility
+                                const gamma = 1.3; // Approximate for hydrocarbons
+                                const C = 520 * Math.sqrt(gamma * Math.pow(2 / (gamma + 1), (gamma + 1) / (gamma - 1)));
+                                const requiredArea = qRelief > 0 && M > 0 && p1_psia > 0
+                                    ? (qRelief * Math.sqrt(T1_R * Z)) / (C * Kd * p1_psia * Kb * Math.sqrt(M))
+                                    : 0;
+
+                                // Get selected orifice info
+                                const selectedOrificeSize = deviceInfo.selected_orifice;
+                                const selectedOrifice = ORIFICES.find(o => o.size === selectedOrificeSize);
+                                const ratedArea = selectedOrifice ? selectedOrifice.area : 0;
+
+                                // Calculate rated relief load (reverse of area calc)
+                                const ratedReliefLoad = ratedArea > 0 && M > 0 && p1_psia > 0
+                                    ? (ratedArea * C * Kd * p1_psia * Kb * Math.sqrt(M)) / Math.sqrt(T1_R * Z)
+                                    : 0;
 
                                 return (
                                     <div className="bg-white rounded-xl shadow-lg p-6">
@@ -1161,10 +1183,7 @@
                                                     <div className="flex items-center justify-between">
                                                         <span className="text-sm text-gray-700">Max Liquid Operating Level</span>
                                                         <div className="flex items-center space-x-1">
-                                                            <input type="number" value={vesselDetails.max_liquid_level}
-                                                                onChange={(e) => updateVesselDetail('max_liquid_level', e.target.value)}
-                                                                min="0" max="100"
-                                                                className="w-20 px-3 py-1.5 bg-green-50 border border-green-300 rounded text-sm text-right focus:outline-none focus:border-green-500" />
+                                                            <span className="text-sm font-medium text-gray-900 w-20 text-right">0</span>
                                                             <span className="text-xs text-gray-500">%</span>
                                                         </div>
                                                     </div>
@@ -1311,15 +1330,7 @@
                                                 </div>
                                             </div>
 
-                                            {/* Calculated Surface Areas from Vessel Geometry */}
-                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                                                <span className="text-sm text-gray-700">Total Vessel Surface Area</span>
-                                                <div className="flex items-center space-x-2">
-                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{vesselAreas.total > 0 ? vesselAreas.total.toFixed(1) : '-'}</span>
-                                                    <span className="text-xs text-gray-500 w-12">ft²</span>
-                                                </div>
-                                            </div>
-
+                                            {/* Unwetted Surface Area from Vessel Geometry */}
                                             <div className="flex items-center justify-between py-2 border-b border-gray-100 bg-blue-50 -mx-2 px-2 rounded">
                                                 <span className="text-sm font-medium text-gray-700">Unwetted Surface Area (A')</span>
                                                 <div className="flex items-center space-x-2">
@@ -1354,6 +1365,59 @@
                                                     <span className="text-xs text-gray-500 w-12">MMscfd</span>
                                                 </div>
                                             </div>
+                                        </div>
+
+                                        {/* Required vs Rated Comparison */}
+                                        <div className="mt-6 bg-gray-100 rounded-lg p-4">
+                                            <h4 className="font-medium text-gray-700 mb-3">Relief Device Sizing Summary</h4>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                {/* Required Column */}
+                                                <div className="bg-white rounded-lg p-3 border border-gray-200">
+                                                    <h5 className="text-xs font-semibold text-gray-500 uppercase mb-2">Required</h5>
+                                                    <div className="space-y-2">
+                                                        <div className="flex justify-between">
+                                                            <span className="text-sm text-gray-600">Relief Load</span>
+                                                            <span className="text-sm font-medium">{qRelief > 0 ? qRelief.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} <span className="text-xs text-gray-400">lb/hr</span></span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-sm text-gray-600">Relief Area</span>
+                                                            <span className="text-sm font-medium">{requiredArea > 0 ? requiredArea.toFixed(4) : '-'} <span className="text-xs text-gray-400">in²</span></span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Rated Column */}
+                                                <div className="bg-white rounded-lg p-3 border border-gray-200">
+                                                    <h5 className="text-xs font-semibold text-gray-500 uppercase mb-2">Rated ({selectedOrifice ? selectedOrifice.letter : '-'})</h5>
+                                                    <div className="space-y-2">
+                                                        <div className="flex justify-between">
+                                                            <span className="text-sm text-gray-600">Relief Load</span>
+                                                            <span className="text-sm font-medium">{ratedReliefLoad > 0 ? ratedReliefLoad.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} <span className="text-xs text-gray-400">lb/hr</span></span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-sm text-gray-600">Relief Area</span>
+                                                            <span className="text-sm font-medium">{ratedArea > 0 ? ratedArea.toFixed(3) : '-'} <span className="text-xs text-gray-400">in²</span></span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Utilization indicator */}
+                                            {ratedArea > 0 && requiredArea > 0 && (
+                                                <div className="mt-3 pt-3 border-t border-gray-200">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-sm text-gray-600">Utilization</span>
+                                                        <span className={`text-sm font-bold ${(requiredArea / ratedArea * 100) <= 100 ? 'text-green-600' : 'text-red-600'}`}>
+                                                            {(requiredArea / ratedArea * 100).toFixed(1)}%
+                                                            {(requiredArea / ratedArea * 100) <= 100 ? ' ✓' : ' (Undersized!)'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {!selectedOrifice && (
+                                                <p className="mt-3 text-xs text-amber-600">Select a relief device size on the Device Info page to see rated values.</p>
+                                            )}
                                         </div>
                                     </div>
                                 );
