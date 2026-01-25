@@ -394,6 +394,7 @@
                     latent_heat: 150, // Btu/lb (for single component, or calculated for multi)
                     liquid_level: 50, // % liquid level for wetted area
                     prompt_firefighting: false, // Affects C1 vs C2
+                    latent_heat_safety_factor: true, // Apply 10% derating to multi-comp latent heat
                     is_insulated: false,
                     insulation_thickness: 0, // inches
                     thermal_conductivity: 4, // Btu-in/hr-ft²-°F
@@ -2640,7 +2641,11 @@
 
                                 // Multi-component latent heat (Btu/lb) = LATENT portion only / mass vaporized
                                 // NOT total heat / mass - the sensible heat is separate
-                                const lambda_lightEnds = massVaporized > 0 ? Q_latent_PR / massVaporized : latentHeat;
+                                const lambda_lightEnds_calc = massVaporized > 0 ? Q_latent_PR / massVaporized : latentHeat;
+
+                                // Apply 10% safety factor if checkbox is checked (reduces λ, increases relief load)
+                                const safetyFactor = cond.latent_heat_safety_factor ? 0.90 : 1.0;
+                                const lambda_lightEnds = lambda_lightEnds_calc * safetyFactor;
 
                                 // Relief load W = Q / λ (use multi-component lambda for multi-component mixtures)
                                 const effectiveLambda = isMultiComponent ? lambda_lightEnds : latentHeat;
@@ -2757,6 +2762,18 @@
                                                         />
                                                         <span className="text-sm text-gray-700">Prompt Firefighting & Adequate Drainage?</span>
                                                         <span className="text-xs text-gray-500 ml-2">(If checked: C = 21,000. If unchecked: C = 34,500)</span>
+                                                    </label>
+                                                </div>
+                                                <div className="col-span-2">
+                                                    <label className="flex items-center space-x-2 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={cond.latent_heat_safety_factor}
+                                                            onChange={(e) => updateScenarioCondition('fire_wetted', 'latent_heat_safety_factor', e.target.checked)}
+                                                            className="w-4 h-4 text-blue-600 border-gray-300 rounded"
+                                                        />
+                                                        <span className="text-sm text-gray-700">Apply 10% Safety Factor to Multi-Comp Latent Heat?</span>
+                                                        <span className="text-xs text-gray-500 ml-2">(Recommended for conservative sizing)</span>
                                                     </label>
                                                 </div>
                                             </div>
@@ -3164,8 +3181,14 @@
                                                         <span className="text-gray-600">Total Heat Input</span>
                                                         <span className="font-medium">{Q_total_stream > 0 ? Q_total_stream.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} <span className="text-gray-400">Btu/hr</span></span>
                                                     </div>
+                                                    <div className="flex justify-between">
+                                                        <span className="text-gray-600">Calculated λ (Q_lat/m_vap)</span>
+                                                        <span className="font-medium">{lambda_lightEnds_calc > 0 ? lambda_lightEnds_calc.toFixed(0) : '-'} <span className="text-gray-400">Btu/lb</span></span>
+                                                    </div>
                                                     <div className="flex justify-between border-t pt-1 mt-1 bg-purple-50 -mx-3 px-3 py-1">
-                                                        <span className="text-gray-700 font-medium">Multi-Comp Latent Heat (Q_lat/m_vap)</span>
+                                                        <span className="text-gray-700 font-medium">
+                                                            Multi-Comp Latent Heat {cond.latent_heat_safety_factor && <span className="text-blue-600">(×0.90 SF)</span>}
+                                                        </span>
                                                         <span className="font-bold text-purple-700">{lambda_lightEnds > 0 ? lambda_lightEnds.toFixed(0) : '-'} <span className="text-gray-400">Btu/lb</span></span>
                                                     </div>
                                                 </div>
