@@ -379,6 +379,31 @@
                 discharge_location: 'atmosphere',
                 set_pressure: '',
                 psv_type: 'conventional',
+                // Additional fields for professional report
+                client: '',
+                plant: '',
+                project: '',
+                project_no: '',
+                manufacturer: '',
+                model_number: '',
+                serial_number: '',
+                inlet_pipe_size: '',
+                inlet_pipe_schedule: 'XS',
+                inlet_connection_rating: 'CL 150',
+                outlet_pipe_size: '',
+                outlet_pipe_schedule: 'XS',
+                outlet_connection_rating: 'CL 150',
+            });
+
+            // Report metadata
+            const [reportInfo, setReportInfo] = useState({
+                engineered_by: '',
+                checked_by: '',
+                revision: 'A',
+                revision_date: new Date().toLocaleDateString(),
+                revision_history: [
+                    { rev: 'A', date: new Date().toLocaleDateString(), description: 'Issued for Review' }
+                ]
             });
 
             // Step 2: Scenario selections with applicable flags and notes
@@ -1455,298 +1480,584 @@
 
                     const { jsPDF } = window.jspdf;
                     const doc = new jsPDF();
-                const pageWidth = doc.internal.pageSize.getWidth();
-                const pageHeight = doc.internal.pageSize.getHeight();
-                const margin = 20;
-                let yPos = margin;
+                    const pageWidth = doc.internal.pageSize.getWidth();
+                    const pageHeight = doc.internal.pageSize.getHeight();
+                    const margin = 15;
+                    let yPos = margin;
 
-                // Scenario name lookup
-                const scenarioNames = {
-                    fire_wetted: '1A - Fire-Wetted (Liquid Boil up)',
-                    fire_unwetted: '1B - Fire-Unwetted (Vapor)',
-                    blocked_vapor: '2A - Blocked Outlet - Vapor',
-                    cv_failure: '3 - CV Failure - Vapor'
-                };
-                const controllingName = scenarioNames[results.controllingScenario] || results.controllingScenario;
+                    // Scenario definitions with full names
+                    const SCENARIO_DEFS = {
+                        fire_wetted: { id: '1A', name: 'Fire - Wetted', fullName: '1A - Fire-Wetted (Liquid Boil up)' },
+                        fire_unwetted: { id: '1B', name: 'Fire - Unwetted', fullName: '1B - Fire-Unwetted (Vapor)' },
+                        blocked_vapor: { id: '2A', name: 'Blocked Outlet', fullName: '2A - Blocked Outlet - Vapor' },
+                        cv_failure: { id: '3', name: 'CV Failure', fullName: '3 - CV Failure - Vapor' },
+                        hydraulic_thermal: { id: '4', name: 'Hydraulic Expansion', fullName: '4 - Hydraulic Thermal Expansion' }
+                    };
 
-                // Helper to add new page if needed
-                const checkNewPage = (requiredSpace = 30) => {
-                    if (yPos + requiredSpace > pageHeight - margin) {
-                        doc.addPage();
-                        yPos = margin;
-                        return true;
-                    }
-                    return false;
-                };
+                    const controllingDef = SCENARIO_DEFS[results.controllingScenario] || { name: results.controllingScenario };
 
-                // ========== COVER PAGE ==========
-                doc.setFillColor(30, 58, 95); // Franc blue
-                doc.rect(0, 0, pageWidth, 80, 'F');
+                    // Helper functions
+                    const checkNewPage = (requiredSpace = 30) => {
+                        if (yPos + requiredSpace > pageHeight - 20) {
+                            doc.addPage();
+                            yPos = margin;
+                            return true;
+                        }
+                        return false;
+                    };
 
-                doc.setTextColor(255, 255, 255);
-                doc.setFontSize(28);
-                doc.setFont('helvetica', 'bold');
-                doc.text('PSV Sizing Report', pageWidth / 2, 40, { align: 'center' });
+                    const drawCellBorder = (x, y, w, h) => {
+                        doc.setDrawColor(0, 0, 0);
+                        doc.setLineWidth(0.3);
+                        doc.rect(x, y, w, h);
+                    };
 
-                doc.setFontSize(14);
-                doc.setFont('helvetica', 'normal');
-                doc.text('Pressure Safety Valve Sizing per API 520/521', pageWidth / 2, 55, { align: 'center' });
+                    const drawHeaderCell = (x, y, w, h, text) => {
+                        doc.setFillColor(200, 220, 240);
+                        doc.rect(x, y, w, h, 'F');
+                        drawCellBorder(x, y, w, h);
+                        doc.setFont('helvetica', 'bold');
+                        doc.setFontSize(9);
+                        doc.setTextColor(0, 0, 0);
+                        doc.text(text, x + 2, y + h/2 + 2);
+                    };
 
-                doc.setTextColor(30, 58, 95);
-                yPos = 100;
+                    // ========== PAGE 1: COVER PAGE ==========
+                    // Title box
+                    doc.setFillColor(200, 220, 240);
+                    doc.rect(margin, margin, pageWidth - 2*margin, 20, 'F');
+                    doc.setDrawColor(0, 0, 0);
+                    doc.setLineWidth(0.5);
+                    doc.rect(margin, margin, pageWidth - 2*margin, 20);
 
-                // Device info on cover
-                doc.setFontSize(12);
-                doc.setFont('helvetica', 'bold');
-                doc.text('Device Information', margin, yPos);
-                yPos += 10;
-                doc.setFont('helvetica', 'normal');
-                doc.setFontSize(11);
-                if (deviceInfo.tag) { doc.text(`Relief Device Tag: ${deviceInfo.tag}`, margin, yPos); yPos += 7; }
-                if (deviceInfo.pid_number) { doc.text(`P&ID Number: ${deviceInfo.pid_number}`, margin, yPos); yPos += 7; }
-                if (deviceInfo.facility_name) { doc.text(`Facility: ${deviceInfo.facility_name}`, margin, yPos); yPos += 7; }
-                if (deviceInfo.equipment_tag) { doc.text(`Equipment Tag: ${deviceInfo.equipment_tag}`, margin, yPos); yPos += 7; }
-
-                yPos += 10;
-                doc.setFont('helvetica', 'bold');
-                doc.text('Valve Details', margin, yPos);
-                yPos += 10;
-                doc.setFont('helvetica', 'normal');
-                doc.text(`Orifice Designation: ${results.selectedOrifice.letter}`, margin, yPos); yPos += 7;
-                doc.text(`Rated Area: ${results.ratedArea.toFixed(3)} in²`, margin, yPos); yPos += 7;
-                doc.text(`Set Pressure: ${deviceInfo.set_pressure} psig`, margin, yPos); yPos += 7;
-                doc.text(`Backpressure: ${deviceInfo.backpressure} psig`, margin, yPos); yPos += 7;
-
-                yPos += 20;
-
-                // Results summary box
-                doc.setFillColor(results.isUndersized ? 254 : 240, results.isUndersized ? 226 : 253, results.isUndersized ? 226 : 244);
-                doc.roundedRect(margin, yPos, pageWidth - 2 * margin, 50, 3, 3, 'F');
-
-                yPos += 15;
-                doc.setFontSize(14);
-                doc.setFont('helvetica', 'bold');
-                doc.setTextColor(results.isUndersized ? 220 : 22, results.isUndersized ? 38 : 163, results.isUndersized ? 38 : 74);
-                doc.text(results.isUndersized ? 'UNDERSIZED' : 'ADEQUATE', pageWidth / 2, yPos, { align: 'center' });
-
-                yPos += 12;
-                doc.setFontSize(11);
-                doc.setTextColor(60, 60, 60);
-                doc.setFont('helvetica', 'normal');
-                doc.text(`Controlling Scenario: ${controllingName}`, pageWidth / 2, yPos, { align: 'center' });
-                yPos += 8;
-                doc.text(`Required Area: ${results.maxRequiredArea.toFixed(2)} in² | Rated Area: ${results.ratedArea.toFixed(3)} in²`, pageWidth / 2, yPos, { align: 'center' });
-
-                // Footer on cover
-                doc.setTextColor(128, 128, 128);
-                doc.setFontSize(9);
-                doc.text('Franc Engineering | franceng.com', pageWidth / 2, pageHeight - 20, { align: 'center' });
-                doc.text(`Generated: ${new Date().toLocaleDateString()}`, pageWidth / 2, pageHeight - 14, { align: 'center' });
-
-                // ========== PAGE 2: INPUT SUMMARY ==========
-                doc.addPage();
-                yPos = margin;
-
-                doc.setTextColor(30, 58, 95);
-                doc.setFontSize(16);
-                doc.setFont('helvetica', 'bold');
-                doc.text('Input Summary', margin, yPos);
-                yPos += 15;
-
-                // Device inputs table
-                doc.autoTable({
-                    startY: yPos,
-                    head: [['Parameter', 'Value']],
-                    body: [
-                        ['Relief Device Tag', deviceInfo.tag || '-'],
-                        ['P&ID Number', deviceInfo.pid_number || '-'],
-                        ['Facility', deviceInfo.facility_name || '-'],
-                        ['Equipment Tag', deviceInfo.equipment_tag || '-'],
-                        ['Orifice Designation', results.selectedOrifice.letter],
-                        ['Set Pressure', `${deviceInfo.set_pressure} psig`],
-                        ['Backpressure', `${deviceInfo.backpressure} psig`],
-                    ],
-                    theme: 'striped',
-                    headStyles: { fillColor: [30, 58, 95] },
-                    margin: { left: margin, right: margin }
-                });
-
-                yPos = doc.lastAutoTable.finalY + 15;
-
-                // Fluid composition if available
-                const activeScenarioId = results.controllingScenario.id;
-                const comp = compositions[activeScenarioId] || {};
-                const compEntries = Object.entries(comp).filter(([_, val]) => val > 0);
-
-                if (compEntries.length > 0) {
-                    doc.setFontSize(14);
                     doc.setFont('helvetica', 'bold');
-                    doc.text('Fluid Composition', margin, yPos);
+                    doc.setFontSize(18);
+                    doc.setTextColor(0, 0, 0);
+                    doc.text(`${deviceInfo.tag || 'PSV'} Deliverable Rev. ${reportInfo.revision}`, margin + 5, margin + 13);
+
+                    yPos = margin + 40;
+
+                    // Revision History Table
+                    doc.setFontSize(10);
+                    doc.setFont('helvetica', 'bold');
+
+                    // Draw revision table header
+                    const revTableY = yPos;
+                    const col1W = 30, col2W = 30, col3W = pageWidth - 2*margin - 60;
+
+                    drawHeaderCell(margin, revTableY, col1W, 10, 'REVISION');
+                    drawHeaderCell(margin + col1W, revTableY, col2W, 10, 'DATE');
+                    drawHeaderCell(margin + col1W + col2W, revTableY, col3W, 10, 'DESCRIPTION OF CHANGE');
+
+                    // Draw revision rows
+                    let rowY = revTableY + 10;
+                    const rowH = 15;
+
+                    reportInfo.revision_history.forEach((rev, i) => {
+                        doc.setFillColor(255, 255, 255);
+                        doc.rect(margin, rowY, col1W, rowH, 'F');
+                        doc.rect(margin + col1W, rowY, col2W, rowH, 'F');
+                        doc.rect(margin + col1W + col2W, rowY, col3W, rowH, 'F');
+                        drawCellBorder(margin, rowY, col1W, rowH);
+                        drawCellBorder(margin + col1W, rowY, col2W, rowH);
+                        drawCellBorder(margin + col1W + col2W, rowY, col3W, rowH);
+
+                        doc.setFont('helvetica', 'normal');
+                        doc.setFontSize(9);
+                        doc.text(rev.rev, margin + col1W/2, rowY + rowH/2 + 2, { align: 'center' });
+                        doc.text(rev.date, margin + col1W + col2W/2, rowY + rowH/2 + 2, { align: 'center' });
+                        doc.text(rev.description, margin + col1W + col2W + 3, rowY + rowH/2 + 2);
+                        rowY += rowH;
+                    });
+
+                    // Add empty rows for future revisions
+                    for (let i = reportInfo.revision_history.length; i < 7; i++) {
+                        doc.rect(margin, rowY, col1W, rowH);
+                        doc.rect(margin + col1W, rowY, col2W, rowH);
+                        doc.rect(margin + col1W + col2W, rowY, col3W, rowH);
+                        rowY += rowH;
+                    }
+
+                    // Franc Engineering logo area at bottom
+                    doc.setFontSize(16);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setTextColor(30, 58, 95);
+                    // Draw triangle logo approximation
+                    doc.setFillColor(30, 58, 95);
+                    doc.triangle(pageWidth/2 - 60, pageHeight - 50, pageWidth/2 - 40, pageHeight - 70, pageWidth/2 - 20, pageHeight - 50, 'F');
+                    doc.text('FRANC ENGINEERING', pageWidth/2 - 10, pageHeight - 55);
+
+                    // ========== PAGE 2: RELIEF DEVICE SIZING SUMMARY ==========
+                    doc.addPage();
+                    yPos = margin;
+
+                    // Header with title and device info
+                    doc.setFillColor(230, 230, 230);
+                    doc.rect(margin, yPos, pageWidth - 2*margin, 18, 'F');
+                    doc.setDrawColor(0, 0, 0);
+                    doc.rect(margin, yPos, pageWidth - 2*margin, 18);
+
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(14);
+                    doc.setTextColor(0, 0, 0);
+                    doc.text('Relief Device Sizing Summary', margin + 3, yPos + 12);
+
+                    // Right side header info
+                    doc.setFontSize(9);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('Relief Device Tag :', pageWidth - 80, yPos + 6);
+                    doc.text('P&ID Number :', pageWidth - 80, yPos + 12);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text(deviceInfo.tag || '-', pageWidth - 40, yPos + 6);
+                    doc.text(deviceInfo.pid_number || '-', pageWidth - 40, yPos + 12);
+
+                    yPos += 25;
+
+                    // Client info section (left) and Engineer info (right)
+                    doc.setFontSize(9);
+                    const leftCol = margin;
+                    const rightCol = pageWidth / 2 + 10;
+
+                    // Left column - Client info
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('Client :', leftCol, yPos);
+                    doc.text('Plant :', leftCol, yPos + 6);
+                    doc.text('Project :', leftCol, yPos + 12);
+                    doc.text('Project No :', leftCol, yPos + 18);
+
+                    doc.setFont('helvetica', 'normal');
+                    doc.text(deviceInfo.client || '-', leftCol + 25, yPos);
+                    doc.text(deviceInfo.plant || deviceInfo.facility_name || '-', leftCol + 25, yPos + 6);
+                    doc.text(deviceInfo.project || '-', leftCol + 25, yPos + 12);
+                    doc.text(deviceInfo.project_no || '-', leftCol + 25, yPos + 18);
+
+                    // Right column - Engineer info
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('Engineered By :', rightCol, yPos);
+                    doc.text('Checked By :', rightCol, yPos + 6);
+                    doc.text('Date :', rightCol, yPos + 12);
+                    doc.text('Revision :', rightCol, yPos + 18);
+
+                    doc.setFont('helvetica', 'normal');
+                    doc.text(reportInfo.engineered_by || '-', rightCol + 30, yPos);
+                    doc.text(reportInfo.checked_by || '-', rightCol + 30, yPos + 6);
+                    doc.text(reportInfo.revision_date || new Date().toLocaleDateString(), rightCol + 30, yPos + 12);
+                    doc.text(reportInfo.revision || 'A', rightCol + 30, yPos + 18);
+
+                    yPos += 28;
+
+                    // Relief Device & Protected System Details section
+                    doc.setFillColor(230, 230, 230);
+                    doc.rect(margin, yPos, pageWidth - 2*margin, 8, 'F');
+                    doc.rect(margin, yPos, pageWidth - 2*margin, 8);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(9);
+                    doc.text('Relief Device & Protected System Details', margin + 2, yPos + 5.5);
                     yPos += 10;
 
-                    doc.autoTable({
-                        startY: yPos,
-                        head: [['Component', 'Mol %']],
-                        body: compEntries.map(([name, val]) => [name, val.toFixed(2)]),
-                        theme: 'striped',
-                        headStyles: { fillColor: [30, 58, 95] },
-                        margin: { left: margin, right: margin }
-                    });
-                    yPos = doc.lastAutoTable.finalY + 15;
-                }
+                    // Two column layout for device details
+                    const detailsY = yPos;
+                    const halfWidth = (pageWidth - 2*margin) / 2;
 
-                // ========== PAGE 3: RESULTS TABLE ==========
-                doc.addPage();
-                yPos = margin;
+                    // Left column - Relief Device
+                    const leftDetails = [
+                        ['Manufacturer', deviceInfo.manufacturer || '-'],
+                        ['Model Number', deviceInfo.model_number || '-'],
+                        ['Serial Number', deviceInfo.serial_number || '-'],
+                        ['Valve Type', deviceInfo.psv_type?.toUpperCase() || 'CONVENTIONAL'],
+                        ['', ''],
+                        ['New or Existing?', deviceInfo.new_or_existing?.toUpperCase() || 'NEW'],
+                        ['Discharge Location', deviceInfo.discharge_location?.toUpperCase() || 'ATMOSPHERE'],
+                        ['Ambient Pressure', '14.7']
+                    ];
 
-                doc.setTextColor(30, 58, 95);
-                doc.setFontSize(16);
-                doc.setFont('helvetica', 'bold');
-                doc.text('Scenario Results Summary', margin, yPos);
-                yPos += 15;
+                    // Right column - Orifice and Piping
+                    const selectedOrifice = ORIFICES.find(o => o.size === deviceInfo.selected_orifice) || results.selectedOrifice;
+                    const rightDetails = [
+                        ['Orifice Designation', `ASME    ${selectedOrifice?.letter || '-'}`],
+                        ['Actual Orifice Area', `${selectedOrifice?.area?.toFixed(3) || '-'} in²`],
+                        ['Relief Device Set Pressure (psig)', deviceInfo.set_pressure || '-'],
+                        ['', ''],
+                        ['', 'Inlet', 'Outlet'],
+                        ['Nominal Pipe Size (NPS)', deviceInfo.inlet_pipe_size || '-', deviceInfo.outlet_pipe_size || '-'],
+                        ['Pipe Schedule', deviceInfo.inlet_pipe_schedule || 'XS', deviceInfo.outlet_pipe_schedule || 'XS'],
+                        ['Connection Rating', deviceInfo.inlet_connection_rating || 'CL 150', deviceInfo.outlet_connection_rating || 'CL 150']
+                    ];
 
-                // Convert scenarioResults object to array for PDF table
-                const allScenarios = [
-                    { id: 'fire_wetted', name: '1A - Fire-Wetted (Liquid Boil up)' },
-                    { id: 'fire_unwetted', name: '1B - Fire-Unwetted (Vapor)' },
-                    { id: 'blocked_vapor', name: '2A - Blocked Outlet - Vapor' },
-                    { id: 'cv_failure', name: '3 - CV Failure - Vapor' }
-                ];
-
-                // Get controlling scenario name for bolding
-                const controllingScenarioName = allScenarios.find(s => s.id === results.controllingScenario)?.name || '';
-
-                const scenarioTableData = allScenarios.map(s => {
-                    const r = results.scenarioResults[s.id];
-                    if (r && r.applicable) {
-                        return [
-                            'Yes',
-                            s.name,
-                            r.requiredFlow.toFixed(1) + ' / ' + r.ratedFlow.toFixed(0),
-                            r.requiredArea.toFixed(2),
-                            r.requiredArea <= results.ratedArea ? 'Adequate' : 'Undersized'
-                        ];
-                    } else {
-                        return ['No', s.name, '-', '-', '-'];
-                    }
-                });
-
-                doc.autoTable({
-                    startY: yPos,
-                    head: [['Applicable?', 'Scenario', 'Required/Rated Flow (lb/hr)', 'Required Area (in²)', 'Status']],
-                    body: scenarioTableData,
-                    theme: 'striped',
-                    headStyles: { fillColor: [30, 58, 95] },
-                    margin: { left: margin, right: margin },
-                    didParseCell: function(data) {
-                        // Bold the controlling scenario row
-                        const scenarioName = data.row.raw[1];
-                        if (scenarioName === controllingScenarioName && data.section === 'body') {
-                            data.cell.styles.fontStyle = 'bold';
-                        }
-                        // Color the status column
-                        if (data.column.index === 4 && data.section === 'body') {
-                            if (data.cell.raw === 'Adequate') {
-                                data.cell.styles.textColor = [22, 163, 74];
-                            } else if (data.cell.raw === 'Undersized') {
-                                data.cell.styles.textColor = [220, 38, 38];
-                            }
-                        }
-                    }
-                });
-
-                yPos = doc.lastAutoTable.finalY + 20;
-
-                // Sizing summary
-                checkNewPage(60);
-                doc.setFontSize(14);
-                doc.setFont('helvetica', 'bold');
-                doc.text('Sizing Summary', margin, yPos);
-                yPos += 10;
-
-                doc.autoTable({
-                    startY: yPos,
-                    head: [['Parameter', 'Value']],
-                    body: [
-                        ['Controlling Scenario', controllingName],
-                        ['Required Relief Area', `${results.maxRequiredArea.toFixed(2)} in²`],
-                        ['Installed Orifice', results.selectedOrifice.letter],
-                        ['Installed Rated Area', `${results.ratedArea.toFixed(3)} in²`],
-                        ['Utilization', `${((results.maxRequiredArea / results.ratedArea) * 100).toFixed(1)}%`],
-                        ['Status', results.isUndersized ? 'UNDERSIZED' : 'ADEQUATE'],
-                        ...(results.isUndersized ? [['Recommended Orifice', results.recommendedOrifice.letter], ['Recommended Area', `${results.recommendedOrifice.area.toFixed(3)} in²`]] : [])
-                    ],
-                    theme: 'striped',
-                    headStyles: { fillColor: [30, 58, 95] },
-                    margin: { left: margin, right: margin }
-                });
-
-                // ========== PAGE 4: CALCULATION DETAILS ==========
-                doc.addPage();
-                yPos = margin;
-
-                doc.setTextColor(30, 58, 95);
-                doc.setFontSize(16);
-                doc.setFont('helvetica', 'bold');
-                doc.text('Calculation Details', margin, yPos);
-                yPos += 15;
-
-                doc.setFontSize(10);
-                doc.setFont('helvetica', 'normal');
-                doc.setTextColor(60, 60, 60);
-
-                // Add calculation methodology
-                const calcText = [
-                    'Sizing performed per API 520 Part I / API 521 6th Edition',
-                    '',
-                    'Vapor Sizing Equation (API 520):',
-                    'A = W × √(T×Z) / (C × Kd × P1 × Kb × Kc × √M)',
-                    '',
-                    'Where:',
-                    '  A = Required relief area (in²)',
-                    '  W = Mass flow rate (lb/hr)',
-                    '  T = Relieving temperature (°R)',
-                    '  Z = Compressibility factor',
-                    '  C = Coefficient from specific heat ratio k',
-                    '  Kd = Discharge coefficient (0.975 for vapor)',
-                    '  P1 = Relieving pressure absolute (psia)',
-                    '  Kb = Backpressure correction factor',
-                    '  Kc = Combination correction factor',
-                    '  M = Molecular weight (lb/lb-mol)',
-                    '',
-                    'Fire Case (API 521):',
-                    'Q = C₁ × F × A^0.82  (for wetted area)',
-                    'Q = 21000 × F × A^0.82  (for unwetted vessels)',
-                    '',
-                    'W = Q × M / λ',
-                    '',
-                    'Where:',
-                    '  Q = Heat absorption (BTU/hr)',
-                    '  F = Environment factor (1.0 for no insulation)',
-                    '  A = Wetted/Unwetted surface area (ft²)',
-                    '  λ = Latent heat of vaporization (BTU/lb)'
-                ];
-
-                calcText.forEach(line => {
-                    doc.text(line, margin, yPos);
-                    yPos += 6;
-                });
-
-                // Footer on each page
-                const pageCount = doc.internal.getNumberOfPages();
-                for (let i = 1; i <= pageCount; i++) {
-                    doc.setPage(i);
                     doc.setFontSize(8);
-                    doc.setTextColor(128, 128, 128);
-                    doc.text(`Page ${i} of ${pageCount}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
-                    if (i > 1) {
-                        doc.text('Franc Engineering | franceng.com', pageWidth - margin, pageHeight - 10, { align: 'right' });
-                    }
-                }
+                    leftDetails.forEach((row, i) => {
+                        const rowY = detailsY + i * 6;
+                        doc.setFont('helvetica', 'normal');
+                        doc.text(row[0], leftCol, rowY);
+                        doc.setFont('helvetica', 'bold');
+                        doc.text(row[1], leftCol + 35, rowY);
+                    });
 
-                // Save the PDF
-                const filename = `PSV_Report_${deviceInfo.tag || 'Unnamed'}_${new Date().toISOString().split('T')[0]}.pdf`;
-                doc.save(filename);
+                    rightDetails.forEach((row, i) => {
+                        const rowY = detailsY + i * 6;
+                        doc.setFont('helvetica', 'normal');
+                        doc.text(row[0], rightCol, rowY);
+                        doc.setFont('helvetica', 'bold');
+                        if (row.length === 2) {
+                            doc.text(row[1], rightCol + 55, rowY);
+                        } else if (row.length === 3) {
+                            doc.text(row[1], rightCol + 55, rowY);
+                            doc.text(row[2], rightCol + 70, rowY);
+                        }
+                    });
+
+                    yPos = detailsY + 55;
+
+                    // Protected System info
+                    doc.setFont('helvetica', 'normal');
+                    doc.setFontSize(9);
+                    doc.text('Protected System', leftCol, yPos);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text(deviceInfo.protected_system || vesselDetails.equipment_tag || '-', leftCol + 35, yPos);
+                    yPos += 6;
+                    doc.setFont('helvetica', 'normal');
+                    doc.text('MAWP (psig)', leftCol, yPos);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text(`${deviceInfo.mawp || deviceInfo.set_pressure || '-'}`, leftCol + 35, yPos);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text('Criteria for MAWP', leftCol + 55, yPos);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text(`MAWP of ${vesselDetails.equipment_tag || 'Vessel'}`, leftCol + 85, yPos);
+
+                    yPos += 12;
+
+                    // Summary of Potential Relieving Scenarios table
+                    doc.setFillColor(230, 230, 230);
+                    doc.rect(margin, yPos, pageWidth - 2*margin, 8, 'F');
+                    doc.rect(margin, yPos, pageWidth - 2*margin, 8);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(9);
+                    doc.text('Summary of Potential Relieving Scenarios', margin + 2, yPos + 5.5);
+                    yPos += 10;
+
+                    // Scenario table
+                    const scenarioTableHeaders = ['Credible?', 'Scenario', '', 'Required / Rated\nRelieving Flow\n(lb/hr)', 'Required\nOrifice Area\n(in²)', 'Discharge\nTemperature\n(°F)', 'Inlet / Discharge\nPiping Losses\n(%)'];
+                    const colWidths = [22, 35, 30, 30, 25, 22, 28];
+                    const headerH = 18;
+
+                    // Draw header
+                    let colX = margin;
+                    doc.setFontSize(7);
+                    doc.setFont('helvetica', 'bold');
+                    scenarioTableHeaders.forEach((h, i) => {
+                        doc.setFillColor(230, 230, 230);
+                        doc.rect(colX, yPos, colWidths[i], headerH, 'F');
+                        doc.rect(colX, yPos, colWidths[i], headerH);
+                        const lines = h.split('\n');
+                        lines.forEach((line, li) => {
+                            doc.text(line, colX + colWidths[i]/2, yPos + 5 + li * 4, { align: 'center' });
+                        });
+                        colX += colWidths[i];
+                    });
+
+                    yPos += headerH;
+
+                    // Build scenario rows
+                    const scenarioOrder = ['fire_wetted', 'fire_unwetted', 'hydraulic_thermal', 'blocked_vapor', 'cv_failure'];
+                    const scenarioRowH = 8;
+
+                    scenarioOrder.forEach(scenId => {
+                        const sel = scenarioSelections[scenId];
+                        const def = SCENARIO_DEFS[scenId];
+                        const sr = results.scenarioResults?.[scenId];
+
+                        let credible = 'NO';
+                        if (sel?.applicable && sr?.applicable) {
+                            credible = 'YES';
+                        } else if (sel?.applicable && sel?.notes) {
+                            credible = 'SEE COMMENTS';
+                        }
+
+                        const rowData = [
+                            credible,
+                            def?.name || scenId,
+                            sr?.cvTag || '', // CV tag for CV Failure scenarios
+                            sr?.applicable ? `${sr.requiredFlow?.toFixed(0) || '-'} / ${sr.ratedFlow?.toFixed(0) || '-'}` : '',
+                            sr?.applicable ? sr.requiredArea?.toFixed(3) : '',
+                            sr?.applicable ? (sr.dischargeTempF?.toFixed(0) || '-') : '',
+                            sr?.applicable ? `${(sr.inletLoss || 0).toFixed(2)}% / ${(sr.outletLoss || 0).toFixed(2)}%` : ''
+                        ];
+
+                        colX = margin;
+                        doc.setFont('helvetica', 'normal');
+                        doc.setFontSize(7);
+
+                        rowData.forEach((cell, i) => {
+                            // Set background color based on credible status
+                            if (i === 0) {
+                                if (cell === 'YES') {
+                                    doc.setFillColor(198, 239, 206); // Green
+                                } else if (cell === 'SEE COMMENTS') {
+                                    doc.setFillColor(255, 235, 156); // Yellow
+                                } else {
+                                    doc.setFillColor(255, 199, 206); // Red
+                                }
+                            } else if (sr?.applicable) {
+                                doc.setFillColor(198, 239, 206); // Green for applicable rows
+                            } else {
+                                doc.setFillColor(230, 230, 230); // Gray for N/A
+                            }
+
+                            doc.rect(colX, yPos, colWidths[i], scenarioRowH, 'F');
+                            doc.rect(colX, yPos, colWidths[i], scenarioRowH);
+                            doc.text(cell.toString(), colX + colWidths[i]/2, yPos + scenarioRowH/2 + 1.5, { align: 'center' });
+                            colX += colWidths[i];
+                        });
+
+                        yPos += scenarioRowH;
+                    });
+
+                    yPos += 8;
+
+                    // Design Scenario Summary
+                    doc.setFillColor(230, 230, 230);
+                    doc.rect(margin, yPos, pageWidth - 2*margin, 8, 'F');
+                    doc.rect(margin, yPos, pageWidth - 2*margin, 8);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(9);
+                    doc.text('Design Scenario Summary', margin + 2, yPos + 5.5);
+                    yPos += 12;
+
+                    doc.setFontSize(9);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text('Design Scenario', leftCol, yPos);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text(controllingDef.fullName || controllingDef.name, leftCol + 35, yPos);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text('Required Orifice Area', rightCol, yPos);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text(`${results.maxRequiredArea.toFixed(3)} in²`, rightCol + 40, yPos);
+
+                    yPos += 8;
+                    doc.setFont('helvetica', 'normal');
+                    doc.text('Relieving Fluid', leftCol, yPos);
+                    doc.setFont('helvetica', 'bold');
+                    // Determine fluid description from composition
+                    const controllingComp = compositions[results.controllingScenario] || {};
+                    const compNames = Object.entries(controllingComp).filter(([k,v]) => v > 0).map(([k,v]) => k);
+                    const fluidDesc = compNames.length > 0 ? compNames.slice(0, 3).join(' / ').toUpperCase() : 'VAPOR';
+                    doc.text(fluidDesc, leftCol + 35, yPos);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text('% Overpressure', rightCol, yPos);
+                    doc.setFont('helvetica', 'bold');
+                    const overpressure = results.controllingScenario.includes('fire') ? '21%' : '10%';
+                    doc.text(overpressure, rightCol + 40, yPos);
+
+                    yPos += 12;
+
+                    // Existing Relief System Adequate?
+                    const isAdequate = !results.isUndersized;
+                    doc.setFont('helvetica', 'normal');
+                    doc.text('Existing Relief System Adequate?:', leftCol, yPos);
+
+                    // Status box
+                    doc.setFillColor(isAdequate ? 198 : 255, isAdequate ? 239 : 199, isAdequate ? 206 : 206);
+                    doc.rect(leftCol + 55, yPos - 4, 15, 6, 'F');
+                    doc.rect(leftCol + 55, yPos - 4, 15, 6);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setTextColor(isAdequate ? 0 : 200, isAdequate ? 100 : 0, isAdequate ? 0 : 0);
+                    doc.text(isAdequate ? 'YES' : 'NO', leftCol + 62.5, yPos, { align: 'center' });
+                    doc.setTextColor(0, 0, 0);
+
+                    // Status description
+                    if (!isAdequate) {
+                        doc.setFont('helvetica', 'bold');
+                        doc.text('RELIEF VALVE UNDERSIZED', leftCol + 75, yPos);
+                        doc.setFont('helvetica', 'normal');
+                        doc.text(`Recommended: ${results.recommendedOrifice?.letter || 'N/A'} (${results.recommendedOrifice?.area?.toFixed(3) || '-'} in²)`, leftCol + 120, yPos);
+                    }
+
+                    // ========== PAGE 3: POTENTIAL RELIEVING SCENARIO DESCRIPTIONS ==========
+                    doc.addPage();
+                    yPos = margin;
+
+                    doc.setFillColor(230, 230, 230);
+                    doc.rect(margin, yPos, pageWidth - 2*margin, 8, 'F');
+                    doc.rect(margin, yPos, pageWidth - 2*margin, 8);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(9);
+                    doc.setTextColor(0, 0, 0);
+                    doc.text('Potential Relieving Scenario Descriptions', margin + 2, yPos + 5.5);
+                    yPos += 15;
+
+                    // Output each scenario description
+                    scenarioOrder.forEach(scenId => {
+                        const sel = scenarioSelections[scenId];
+                        const def = SCENARIO_DEFS[scenId];
+                        const sr = results.scenarioResults?.[scenId];
+
+                        checkNewPage(50);
+
+                        // Scenario header
+                        let credible = 'NO';
+                        if (sel?.applicable && sr?.applicable) {
+                            credible = 'YES';
+                        } else if (sel?.applicable && sel?.notes) {
+                            credible = 'SEE COMMENTS';
+                        }
+
+                        doc.setFont('helvetica', 'bolditalic');
+                        doc.setFontSize(9);
+                        doc.text(`${def?.name || scenId}`, margin, yPos);
+                        doc.setFont('helvetica', 'normal');
+                        doc.text(`Credible:  ${credible}`, margin + 45, yPos);
+
+                        yPos += 4;
+
+                        // Description box
+                        const notes = sel?.notes || `No notes provided for ${def?.name || scenId}.`;
+                        const noteLines = doc.splitTextToSize(notes, pageWidth - 2*margin - 4);
+                        const boxH = Math.max(15, noteLines.length * 4 + 6);
+
+                        doc.rect(margin, yPos, pageWidth - 2*margin, boxH);
+                        doc.setFontSize(8);
+                        noteLines.forEach((line, i) => {
+                            doc.text(line, margin + 2, yPos + 4 + i * 4);
+                        });
+
+                        yPos += boxH + 8;
+                    });
+
+                    // ========== PAGE 4: CALCULATION DETAILS (OPTIONAL) ==========
+                    doc.addPage();
+                    yPos = margin;
+
+                    doc.setFillColor(230, 230, 230);
+                    doc.rect(margin, yPos, pageWidth - 2*margin, 8, 'F');
+                    doc.rect(margin, yPos, pageWidth - 2*margin, 8);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(9);
+                    doc.text('Calculation Details', margin + 2, yPos + 5.5);
+                    yPos += 15;
+
+                    // Fluid compositions for each applicable scenario
+                    Object.keys(compositions).forEach(scenId => {
+                        const comp = compositions[scenId];
+                        const sel = scenarioSelections[scenId];
+                        const def = SCENARIO_DEFS[scenId];
+                        if (!sel?.applicable) return;
+
+                        const compEntries = Object.entries(comp).filter(([_, val]) => val > 0);
+                        if (compEntries.length === 0) return;
+
+                        checkNewPage(40);
+
+                        doc.setFont('helvetica', 'bold');
+                        doc.setFontSize(9);
+                        doc.text(`${def?.fullName || scenId} - Fluid Composition`, margin, yPos);
+                        yPos += 5;
+
+                        doc.autoTable({
+                            startY: yPos,
+                            head: [['Component', 'Mol %', 'MW', 'Tc (K)', 'Pc (kPa)']],
+                            body: compEntries.map(([name, val]) => {
+                                const c = COMPONENTS[name] || {};
+                                return [
+                                    c.name || name,
+                                    val.toFixed(2),
+                                    c.mw?.toFixed(2) || '-',
+                                    c.tc?.toFixed(1) || '-',
+                                    ((c.pc || 0) / 1000).toFixed(0) || '-'
+                                ];
+                            }),
+                            theme: 'grid',
+                            headStyles: { fillColor: [200, 220, 240], textColor: [0, 0, 0], fontStyle: 'bold', fontSize: 8 },
+                            bodyStyles: { fontSize: 8 },
+                            margin: { left: margin, right: margin },
+                            tableWidth: 100
+                        });
+                        yPos = doc.lastAutoTable.finalY + 10;
+                    });
+
+                    // API Reference
+                    checkNewPage(60);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(9);
+                    doc.text('Sizing Methodology', margin, yPos);
+                    yPos += 6;
+
+                    doc.setFont('helvetica', 'normal');
+                    doc.setFontSize(8);
+                    const methodText = [
+                        'Sizing performed per API 520 Part I / API 521 6th Edition',
+                        '',
+                        'Vapor Sizing: A = W × √(T×Z) / (C × Kd × P1 × Kb × Kc × √M)',
+                        'Fire Case: Q = C₁ × F × A^0.82, W = Q / λ',
+                        '',
+                        'Where: A = area (in²), W = mass flow (lb/hr), T = temp (°R), Z = compressibility,',
+                        'C = k coefficient, Kd = discharge coeff, P1 = relieving pressure (psia),',
+                        'Kb = backpressure factor, Kc = combination factor, M = molecular weight'
+                    ];
+                    methodText.forEach(line => {
+                        doc.text(line, margin, yPos);
+                        yPos += 4;
+                    });
+
+                    // ========== FINAL PAGE: REFERENCES & ATTACHMENTS ==========
+                    doc.addPage();
+                    yPos = margin;
+
+                    doc.setFontSize(24);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('RELIEF DEVICE SIZING', pageWidth / 2, pageHeight / 2 - 10, { align: 'center' });
+                    doc.text('REFERENCES & ATTACHMENTS', pageWidth / 2, pageHeight / 2 + 10, { align: 'center' });
+
+                    // If P&ID file is uploaded, note it
+                    if (pidFile) {
+                        doc.addPage();
+                        yPos = margin;
+                        doc.setFontSize(12);
+                        doc.setFont('helvetica', 'bold');
+                        doc.text('Attachment: P&ID Drawing', margin, yPos);
+                        yPos += 10;
+                        doc.setFont('helvetica', 'normal');
+                        doc.setFontSize(10);
+                        doc.text(`File: ${pidFile.name}`, margin, yPos);
+                        doc.text('(See attached file)', margin, yPos + 6);
+                    }
+
+                    if (miscFile) {
+                        doc.addPage();
+                        yPos = margin;
+                        doc.setFontSize(12);
+                        doc.setFont('helvetica', 'bold');
+                        doc.text('Attachment: Supporting Documentation', margin, yPos);
+                        yPos += 10;
+                        doc.setFont('helvetica', 'normal');
+                        doc.setFontSize(10);
+                        doc.text(`File: ${miscFile.name}`, margin, yPos);
+                        doc.text('(See attached file)', margin, yPos + 6);
+                    }
+
+                    // Add footer to all pages
+                    const pageCount = doc.internal.getNumberOfPages();
+                    for (let i = 1; i <= pageCount; i++) {
+                        doc.setPage(i);
+                        doc.setFontSize(7);
+                        doc.setTextColor(128, 128, 128);
+                        doc.setFont('helvetica', 'normal');
+
+                        // Draw footer line
+                        doc.setDrawColor(200, 200, 200);
+                        doc.line(margin, pageHeight - 12, pageWidth - margin, pageHeight - 12);
+
+                        // Footer text
+                        if (i > 1) {
+                            doc.text(`${deviceInfo.tag || 'PSV'} | Rev. ${reportInfo.revision}`, margin, pageHeight - 8);
+                            doc.text(`Page ${i} of ${pageCount}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
+                            doc.text('Franc Engineering | franceng.com', pageWidth - margin, pageHeight - 8, { align: 'right' });
+                        }
+                    }
+
+                    // Save the PDF
+                    const filename = `${deviceInfo.tag || 'PSV'}_Deliverable_Rev${reportInfo.revision}_${new Date().toISOString().split('T')[0]}.pdf`;
+                    doc.save(filename);
+
                 } catch (error) {
                     console.error('PDF generation error:', error);
                     alert('Error generating PDF: ' + error.message);
@@ -1974,6 +2285,245 @@
                                     file={miscFile}
                                     onFileChange={setMiscFile}
                                 />
+                            </div>
+
+                            {/* Collapsible Project & Report Details */}
+                            <div className="mt-6 border-t pt-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setDeviceInfo({...deviceInfo, showProjectDetails: !deviceInfo.showProjectDetails})}
+                                    className="flex items-center justify-between w-full text-left"
+                                >
+                                    <span className="text-sm font-medium text-gray-700">Project & Report Details (for Deliverable)</span>
+                                    <span className="text-gray-500">{deviceInfo.showProjectDetails ? '▼' : '▶'}</span>
+                                </button>
+
+                                {deviceInfo.showProjectDetails && (
+                                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
+                                    {/* Client */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Client</label>
+                                        <input
+                                            type="text"
+                                            value={deviceInfo.client}
+                                            onChange={(e) => setDeviceInfo({...deviceInfo, client: e.target.value})}
+                                            className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                            placeholder="Client Name, LP"
+                                        />
+                                    </div>
+
+                                    {/* Plant */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Plant</label>
+                                        <input
+                                            type="text"
+                                            value={deviceInfo.plant}
+                                            onChange={(e) => setDeviceInfo({...deviceInfo, plant: e.target.value})}
+                                            className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                            placeholder="Plant Name"
+                                        />
+                                    </div>
+
+                                    {/* Project */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Project</label>
+                                        <input
+                                            type="text"
+                                            value={deviceInfo.project}
+                                            onChange={(e) => setDeviceInfo({...deviceInfo, project: e.target.value})}
+                                            className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                            placeholder="Project Name"
+                                        />
+                                    </div>
+
+                                    {/* Project No */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Project No.</label>
+                                        <input
+                                            type="text"
+                                            value={deviceInfo.project_no}
+                                            onChange={(e) => setDeviceInfo({...deviceInfo, project_no: e.target.value})}
+                                            className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                            placeholder="12345"
+                                        />
+                                    </div>
+
+                                    <div className="sm:col-span-2 border-t pt-4 mt-2">
+                                        <p className="text-xs text-gray-500 mb-3">Relief Device Details</p>
+                                    </div>
+
+                                    {/* Manufacturer */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Manufacturer</label>
+                                        <input
+                                            type="text"
+                                            value={deviceInfo.manufacturer}
+                                            onChange={(e) => setDeviceInfo({...deviceInfo, manufacturer: e.target.value})}
+                                            className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                            placeholder="FARRIS"
+                                        />
+                                    </div>
+
+                                    {/* Model Number */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Model Number</label>
+                                        <input
+                                            type="text"
+                                            value={deviceInfo.model_number}
+                                            onChange={(e) => setDeviceInfo({...deviceInfo, model_number: e.target.value})}
+                                            className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                            placeholder="26FA10-120"
+                                        />
+                                    </div>
+
+                                    {/* Serial Number */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Serial Number</label>
+                                        <input
+                                            type="text"
+                                            value={deviceInfo.serial_number}
+                                            onChange={(e) => setDeviceInfo({...deviceInfo, serial_number: e.target.value})}
+                                            className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                            placeholder="629969-1-10"
+                                        />
+                                    </div>
+
+                                    <div className="sm:col-span-2 border-t pt-4 mt-2">
+                                        <p className="text-xs text-gray-500 mb-3">Piping Details</p>
+                                    </div>
+
+                                    {/* Inlet Pipe */}
+                                    <div className="grid grid-cols-3 gap-2">
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">Inlet Size (NPS)</label>
+                                            <input
+                                                type="text"
+                                                value={deviceInfo.inlet_pipe_size}
+                                                onChange={(e) => setDeviceInfo({...deviceInfo, inlet_pipe_size: e.target.value})}
+                                                className="input-field w-full px-2 py-1.5 border rounded-lg focus:outline-none text-sm"
+                                                placeholder="1 1/2&quot;"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">Schedule</label>
+                                            <select
+                                                value={deviceInfo.inlet_pipe_schedule}
+                                                onChange={(e) => setDeviceInfo({...deviceInfo, inlet_pipe_schedule: e.target.value})}
+                                                className="w-full px-2 py-1.5 border rounded-lg bg-white focus:outline-none text-sm"
+                                            >
+                                                <option value="STD">STD</option>
+                                                <option value="XS">XS</option>
+                                                <option value="XXS">XXS</option>
+                                                <option value="SCH 40">SCH 40</option>
+                                                <option value="SCH 80">SCH 80</option>
+                                                <option value="SCH 160">SCH 160</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">Rating</label>
+                                            <select
+                                                value={deviceInfo.inlet_connection_rating}
+                                                onChange={(e) => setDeviceInfo({...deviceInfo, inlet_connection_rating: e.target.value})}
+                                                className="w-full px-2 py-1.5 border rounded-lg bg-white focus:outline-none text-sm"
+                                            >
+                                                <option value="CL 150">CL 150</option>
+                                                <option value="CL 300">CL 300</option>
+                                                <option value="CL 600">CL 600</option>
+                                                <option value="CL 900">CL 900</option>
+                                                <option value="CL 1500">CL 1500</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    {/* Outlet Pipe */}
+                                    <div className="grid grid-cols-3 gap-2">
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">Outlet Size (NPS)</label>
+                                            <input
+                                                type="text"
+                                                value={deviceInfo.outlet_pipe_size}
+                                                onChange={(e) => setDeviceInfo({...deviceInfo, outlet_pipe_size: e.target.value})}
+                                                className="input-field w-full px-2 py-1.5 border rounded-lg focus:outline-none text-sm"
+                                                placeholder="2&quot;"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">Schedule</label>
+                                            <select
+                                                value={deviceInfo.outlet_pipe_schedule}
+                                                onChange={(e) => setDeviceInfo({...deviceInfo, outlet_pipe_schedule: e.target.value})}
+                                                className="w-full px-2 py-1.5 border rounded-lg bg-white focus:outline-none text-sm"
+                                            >
+                                                <option value="STD">STD</option>
+                                                <option value="XS">XS</option>
+                                                <option value="XXS">XXS</option>
+                                                <option value="SCH 40">SCH 40</option>
+                                                <option value="SCH 80">SCH 80</option>
+                                                <option value="SCH 160">SCH 160</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">Rating</label>
+                                            <select
+                                                value={deviceInfo.outlet_connection_rating}
+                                                onChange={(e) => setDeviceInfo({...deviceInfo, outlet_connection_rating: e.target.value})}
+                                                className="w-full px-2 py-1.5 border rounded-lg bg-white focus:outline-none text-sm"
+                                            >
+                                                <option value="CL 150">CL 150</option>
+                                                <option value="CL 300">CL 300</option>
+                                                <option value="CL 600">CL 600</option>
+                                                <option value="CL 900">CL 900</option>
+                                                <option value="CL 1500">CL 1500</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="sm:col-span-2 border-t pt-4 mt-2">
+                                        <p className="text-xs text-gray-500 mb-3">Report Information</p>
+                                    </div>
+
+                                    {/* Engineered By */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Engineered By</label>
+                                        <input
+                                            type="text"
+                                            value={reportInfo.engineered_by}
+                                            onChange={(e) => setReportInfo({...reportInfo, engineered_by: e.target.value})}
+                                            className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                            placeholder="Engineer Initials"
+                                        />
+                                    </div>
+
+                                    {/* Checked By */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Checked By</label>
+                                        <input
+                                            type="text"
+                                            value={reportInfo.checked_by}
+                                            onChange={(e) => setReportInfo({...reportInfo, checked_by: e.target.value})}
+                                            className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                            placeholder="Checker Initials"
+                                        />
+                                    </div>
+
+                                    {/* Revision */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Revision</label>
+                                        <select
+                                            value={reportInfo.revision}
+                                            onChange={(e) => setReportInfo({...reportInfo, revision: e.target.value})}
+                                            className="w-full px-3 py-2 border rounded-lg bg-white focus:outline-none"
+                                        >
+                                            <option value="A">A - Issued for Review</option>
+                                            <option value="B">B</option>
+                                            <option value="C">C</option>
+                                            <option value="0">0 - Issued for Construction</option>
+                                            <option value="1">1</option>
+                                            <option value="2">2</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                )}
                             </div>
 
                             <div className="flex justify-end mt-6">
