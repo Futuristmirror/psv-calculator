@@ -750,6 +750,15 @@
                 const margin = 20;
                 let yPos = margin;
 
+                // Scenario name lookup
+                const scenarioNames = {
+                    fire_wetted: 'Fire-Wetted (Liquid Boil up)',
+                    fire_unwetted: 'Fire Unwetted (Vapor)',
+                    blocked_vapor: 'Blocked Outlet - Vapor',
+                    cv_failure: 'CV Failure - Vapor'
+                };
+                const controllingName = scenarioNames[results.controllingScenario] || results.controllingScenario;
+
                 // Helper to add new page if needed
                 const checkNewPage = (requiredSpace = 30) => {
                     if (yPos + requiredSpace > pageHeight - margin) {
@@ -814,7 +823,7 @@
                 doc.setFontSize(11);
                 doc.setTextColor(60, 60, 60);
                 doc.setFont('helvetica', 'normal');
-                doc.text(`Controlling Scenario: ${results.controllingScenario.name}`, pageWidth / 2, yPos, { align: 'center' });
+                doc.text(`Controlling Scenario: ${controllingName}`, pageWidth / 2, yPos, { align: 'center' });
                 yPos += 8;
                 doc.text(`Required Area: ${results.maxRequiredArea.toFixed(4)} in² | Rated Area: ${results.ratedArea.toFixed(3)} in²`, pageWidth / 2, yPos, { align: 'center' });
 
@@ -886,17 +895,35 @@
                 doc.text('Scenario Results Summary', margin, yPos);
                 yPos += 15;
 
-                const scenarioTableData = results.scenarioResults.map(r => [
-                    r.applicable ? 'Yes' : 'No',
-                    r.name,
-                    r.applicable ? r.requiredFlow.toFixed(1) : '-',
-                    r.applicable ? r.requiredArea.toFixed(4) : '-',
-                    r.applicable ? (r.requiredArea <= results.ratedArea ? 'Adequate' : 'Undersized') : '-'
-                ]);
+                // Convert scenarioResults object to array for PDF table
+                const allScenarios = [
+                    { id: 'fire_wetted', name: 'Fire-Wetted (Liquid Boil up)' },
+                    { id: 'fire_unwetted', name: 'Fire Unwetted (Vapor)' },
+                    { id: 'blocked_vapor', name: 'Blocked Outlet - Vapor' },
+                    { id: 'cv_failure', name: 'CV Failure - Vapor' }
+                ];
+
+                // Get controlling scenario name for bolding
+                const controllingScenarioName = allScenarios.find(s => s.id === results.controllingScenario)?.name || '';
+
+                const scenarioTableData = allScenarios.map(s => {
+                    const r = results.scenarioResults[s.id];
+                    if (r && r.applicable) {
+                        return [
+                            'Yes',
+                            s.name,
+                            r.requiredFlow.toFixed(1) + ' / ' + r.ratedFlow.toFixed(0),
+                            r.requiredArea.toFixed(4),
+                            r.requiredArea <= results.ratedArea ? 'Adequate' : 'Undersized'
+                        ];
+                    } else {
+                        return ['No', s.name, '-', '-', '-'];
+                    }
+                });
 
                 doc.autoTable({
                     startY: yPos,
-                    head: [['Applicable?', 'Scenario', 'Required Flow (lb/hr)', 'Required Area (in²)', 'Status']],
+                    head: [['Applicable?', 'Scenario', 'Required/Rated Flow (lb/hr)', 'Required Area (in²)', 'Status']],
                     body: scenarioTableData,
                     theme: 'striped',
                     headStyles: { fillColor: [30, 58, 95] },
@@ -904,7 +931,7 @@
                     didParseCell: function(data) {
                         // Bold the controlling scenario row
                         const scenarioName = data.row.raw[1];
-                        if (scenarioName === results.controllingScenario.name && data.section === 'body') {
+                        if (scenarioName === controllingScenarioName && data.section === 'body') {
                             data.cell.styles.fontStyle = 'bold';
                         }
                         // Color the status column
@@ -931,7 +958,7 @@
                     startY: yPos,
                     head: [['Parameter', 'Value']],
                     body: [
-                        ['Controlling Scenario', results.controllingScenario.name],
+                        ['Controlling Scenario', controllingName],
                         ['Required Relief Area', `${results.maxRequiredArea.toFixed(4)} in²`],
                         ['Installed Orifice', results.selectedOrifice.letter],
                         ['Installed Rated Area', `${results.ratedArea.toFixed(3)} in²`],
