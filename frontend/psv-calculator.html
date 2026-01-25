@@ -1865,75 +1865,42 @@
                         const isControlling = scenId === results.controllingScenario;
 
                         // Determine row background color based on new logic:
-                        // - Not Calculated: hatch pattern (handled separately)
-                        // - Credible (YES) + adequately sized: green (198, 239, 206)
-                        // - Credible (YES) + undersized: light red (255, 199, 206)
-                        // - Not credible (NO): light gray (230, 230, 230)
+                        // - Not Calculated (Unknown): solid darker gray
+                        // - Credible (YES): light red (255, 199, 206) - all credible scenarios are red
+                        // - Not credible (NO): light blue-gray for distinction
                         let rowBgColor;
                         const scenarioUndersized = sr?.applicable && sr.requiredArea > (selectedOrifice?.area || 0);
                         if (isNotCalculated) {
-                            rowBgColor = [230, 230, 230]; // Light gray (hatch pattern handled separately)
-                        } else if (credible === 'YES' && sr?.applicable && !scenarioUndersized) {
-                            rowBgColor = [198, 239, 206]; // Green - credible and adequately sized
-                        } else if ((credible === 'YES' || credible === 'SEE COMMENTS') && sr?.applicable && scenarioUndersized) {
-                            rowBgColor = [255, 199, 206]; // Light red - credible but undersized
+                            rowBgColor = [200, 200, 200]; // Darker gray for Unknown/Not Calculated
+                        } else if (credible === 'YES' || credible === 'SEE COMMENTS') {
+                            rowBgColor = [255, 199, 206]; // Light red - all credible scenarios are red
                         } else {
-                            rowBgColor = [230, 230, 230]; // Light gray - not credible or not applicable
+                            rowBgColor = [220, 230, 240]; // Light blue-gray - not credible (NO)
                         }
 
                         if (isNotCalculated) {
-                            // "Not Calculated" scenarios - darker gray with hatch pattern for distinction
-                            // Credible cell - darker gray background with hatch
-                            doc.setFillColor(200, 200, 200); // Darker gray base
+                            // "Not Calculated" scenarios - solid darker gray (no hatch)
+                            // Credible cell - darker gray background
+                            doc.setFillColor(200, 200, 200);
                             doc.rect(colX, yPos, colWidths[0], scenarioRowH, 'F');
-                            // Draw hatch lines on credible cell
-                            doc.saveGraphicsState();
                             doc.rect(colX, yPos, colWidths[0], scenarioRowH);
-                            doc.clip();
-                            doc.setDrawColor(170, 170, 170);
-                            doc.setLineWidth(0.3);
-                            for (let i = -scenarioRowH; i < colWidths[0] + scenarioRowH; i += 2.5) {
-                                doc.line(colX + i, yPos + scenarioRowH, colX + i + scenarioRowH, yPos);
-                            }
-                            doc.restoreGraphicsState();
-                            doc.rect(colX, yPos, colWidths[0], scenarioRowH);
-                            doc.setTextColor(60, 60, 60); // Darker text for readability on hatch
+                            doc.setTextColor(80, 80, 80);
                             doc.text(credible, colX + colWidths[0]/2, yPos + scenarioRowH/2 + 1.5, { align: 'center' });
                             colX += colWidths[0];
 
-                            // Scenario name cell - darker gray with hatch but white background for text area
-                            doc.setFillColor(200, 200, 200); // Darker gray base
+                            // Scenario name cell - darker gray
+                            doc.setFillColor(200, 200, 200);
                             doc.rect(colX, yPos, colWidths[1], scenarioRowH, 'F');
-                            // Draw hatch lines on scenario cell
-                            doc.saveGraphicsState();
-                            doc.rect(colX, yPos, colWidths[1], scenarioRowH);
-                            doc.clip();
-                            doc.setDrawColor(170, 170, 170);
-                            doc.setLineWidth(0.3);
-                            for (let i = -scenarioRowH; i < colWidths[1] + scenarioRowH; i += 2.5) {
-                                doc.line(colX + i, yPos + scenarioRowH, colX + i + scenarioRowH, yPos);
-                            }
-                            doc.restoreGraphicsState();
                             doc.rect(colX, yPos, colWidths[1], scenarioRowH);
                             doc.setFont('helvetica', 'normal');
-                            doc.setTextColor(60, 60, 60); // Darker text for readability
+                            doc.setTextColor(80, 80, 80);
                             doc.text(scenarioNameWithId, colX + colWidths[1]/2, yPos + scenarioRowH/2 + 1.5, { align: 'center' });
                             colX += colWidths[1];
 
-                            // Merged "Not Calculated" cells (span remaining 4 columns) - hatch pattern (darker)
+                            // Merged "Not Calculated" cells (span remaining 4 columns) - solid darker gray
                             const mergedWidth = colWidths[2] + colWidths[3] + colWidths[4] + colWidths[5];
-                            // Draw darker hatch for data cells
                             doc.setFillColor(200, 200, 200);
                             doc.rect(colX, yPos, mergedWidth, scenarioRowH, 'F');
-                            doc.saveGraphicsState();
-                            doc.rect(colX, yPos, mergedWidth, scenarioRowH);
-                            doc.clip();
-                            doc.setDrawColor(170, 170, 170);
-                            doc.setLineWidth(0.3);
-                            for (let i = -scenarioRowH; i < mergedWidth + scenarioRowH; i += 2.5) {
-                                doc.line(colX + i, yPos + scenarioRowH, colX + i + scenarioRowH, yPos);
-                            }
-                            doc.restoreGraphicsState();
                             doc.rect(colX, yPos, mergedWidth, scenarioRowH);
                             doc.setFont('helvetica', 'italic');
                             doc.text('Not Calculated', colX + mergedWidth/2, yPos + scenarioRowH/2 + 1.5, { align: 'center' });
@@ -1951,22 +1918,9 @@
                             ];
 
                             rowData.forEach((cell, i) => {
-                                // For controlling scenario that is undersized, use red for ALL columns (including Credible)
-                                if (isControlling && scenarioUndersized) {
-                                    doc.setFillColor(255, 199, 206); // Light red for entire row
-                                } else if (i === 0) {
-                                    // Credible column gets special coloring (non-controlling scenarios)
-                                    if (cell === 'YES') {
-                                        doc.setFillColor(198, 239, 206); // Green for credible
-                                    } else if (cell === 'SEE COMMENTS') {
-                                        doc.setFillColor(255, 235, 156); // Yellow for see comments
-                                    } else {
-                                        doc.setFillColor(230, 230, 230); // Light gray for not credible (NO)
-                                    }
-                                } else {
-                                    // Other columns use row background color
-                                    doc.setFillColor(...rowBgColor);
-                                }
+                                // All cells use the row background color consistently
+                                // Credible (YES/SEE COMMENTS) = red, Not credible (NO) = light blue-gray
+                                doc.setFillColor(...rowBgColor);
 
                                 doc.rect(colX, yPos, colWidths[i], scenarioRowH, 'F');
                                 doc.rect(colX, yPos, colWidths[i], scenarioRowH);
