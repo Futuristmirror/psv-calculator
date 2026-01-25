@@ -389,7 +389,13 @@
                 fire_wetted: {
                     normal_op_pressure: 80,
                     normal_op_temp: 125,
-                    latent_heat: 150,
+                    latent_heat: 150, // Btu/lb (for single component, or calculated for multi)
+                    liquid_level: 50, // % liquid level for wetted area
+                    prompt_firefighting: false, // Affects C1 vs C2
+                    is_insulated: false,
+                    insulation_thickness: 0, // inches
+                    thermal_conductivity: 4, // Btu-in/hr-ft²-°F
+                    stream_a_mass_flow: 1000, // lb/hr inlet
                 },
                 fire_unwetted: {
                     normal_op_pressure: 80,
@@ -724,13 +730,43 @@
                     if (requiredArea > maxRequiredArea) { maxRequiredArea = requiredArea; controllingScenario = 'blocked_vapor'; }
                 }
 
-                // Fire Wetted (1A) - placeholder
+                // Fire Wetted (1A)
                 if (scenarioSelections.fire_wetted?.applicable) {
+                    const comp = compositions.fire_wetted || {};
+                    const cond = scenarioConditions.fire_wetted;
+                    const FIRE_WETTED_OVERPRESSURE = 0.21;
+                    const p1_psia = setP * (1 + FIRE_WETTED_OVERPRESSURE) + AMBIENT_PRESSURE;
+                    const M = getMolecularWeight(comp);
+                    const k = getSpecificHeatRatio(comp);
+                    const C = getAPI520_C(k);
+                    const T1 = cond.normal_op_temp;
+                    const T1_R = T1 + 459.67;
+
+                    // Heat absorption
+                    const heatConst = cond.prompt_firefighting ? 34500 : 21000;
+                    let F = 1.0;
+                    if (cond.is_insulated && cond.insulation_thickness > 0) {
+                        F = Math.min(1.0, cond.thermal_conductivity / (cond.insulation_thickness * 21000 / 904));
+                    }
+                    const wettedAreas = calcVesselAreas({ ...vesselDetails, max_liquid_level: cond.liquid_level });
+                    const wettedArea = wettedAreas.wettedArea;
+                    const Q = heatConst * F * Math.pow(wettedArea, 0.82);
+                    const latentHeat = cond.latent_heat || 150;
+                    const W = latentHeat > 0 ? Q / latentHeat : 0;
+
+                    const requiredArea = W > 0 && M > 0 && p1_psia > 0
+                        ? (W * Math.sqrt(T1_R * 1.0)) / (C * 0.975 * p1_psia * 1.0 * 1.0 * Math.sqrt(M))
+                        : 0;
+                    const ratedLoad = ratedArea > 0 && M > 0 && p1_psia > 0
+                        ? (ratedArea * C * 0.975 * p1_psia * 1.0 * 1.0 * Math.sqrt(M)) / Math.sqrt(T1_R * 1.0)
+                        : 0;
+
                     scenarioResults.fire_wetted = {
-                        applicable: true, label: '1A', name: 'Fire-Wetted',
-                        requiredFlow: 0, ratedFlow: 0, requiredArea: 0, ratedArea,
-                        adequate: true, placeholder: true
+                        applicable: true, label: '1A', name: '1A - Fire-Wetted',
+                        requiredFlow: W, ratedFlow: ratedLoad, requiredArea, ratedArea,
+                        adequate: ratedArea >= requiredArea
                     };
+                    if (requiredArea > maxRequiredArea) { maxRequiredArea = requiredArea; controllingScenario = 'fire_wetted'; }
                 }
 
                 // CV Failure (3)
@@ -1961,18 +1997,337 @@
                             })()}
 
                             {/* Fire-Wetted (1A) Section */}
-                            {(activeConditionsTab === 'fire_wetted' || (applicableScenarios.length === 1 && scenarioSelections.fire_wetted?.applicable)) && (
+                            {(activeConditionsTab === 'fire_wetted' || (applicableScenarios.length === 1 && scenarioSelections.fire_wetted?.applicable)) && (() => {
+                                const comp = compositions.fire_wetted || {};
+                                const cond = scenarioConditions.fire_wetted;
+                                const setP = parseFloat(deviceInfo.set_pressure) || 0;
+                                const FIRE_WETTED_OVERPRESSURE = 0.21; // 21% for fire case
+                                const p1_psia = setP * (1 + FIRE_WETTED_OVERPRESSURE) + AMBIENT_PRESSURE;
+                                const p1_psig = setP * (1 + FIRE_WETTED_OVERPRESSURE);
+                                const M = getMolecularWeight(comp);
+                                const Pcrit = getCriticalPressure(comp);
+                                const k = getSpecificHeatRatio(comp);
+                                const C = getAPI520_C(k);
+
+                                // Determine if single or multi-component
+                                const compEntries = Object.entries(comp).filter(([_, val]) => val > 0);
+                                const isMultiComponent = compEntries.length > 1;
+
+                                // Calculate bubble point temperature (simplified - would need proper VLE)
+                                // For now, use a simplified correlation based on critical properties
+                                const T_bubble = cond.normal_op_temp; // Simplified: use normal op temp
+
+                                // Stream A: Liquid at bubble point (vapor fraction = 0)
+                                const streamA_vaporFrac = 0.0;
+                                const streamA_massFlow = cond.stream_a_mass_flow || 1000;
+                                const streamA_molarFlow = M > 0 ? streamA_massFlow / M : 0;
+
+                                // Stream B: 5% vapor fraction (light ends vaporized)
+                                const streamB_vaporFrac = 0.05;
+                                const streamB_massVaporized = streamA_massFlow * streamB_vaporFrac;
+                                const streamB_molarVaporized = M > 0 ? streamB_massVaporized / M : 0;
+
+                                // Heat absorption constants
+                                const C1 = 21000; // No prompt firefighting/drainage
+                                const C2 = 34500; // With prompt firefighting/drainage
+                                const heatAbsorptionConstant = cond.prompt_firefighting ? C2 : C1;
+
+                                // Environment factor F
+                                let F = 1.0; // Bare vessel
+                                if (cond.is_insulated && cond.insulation_thickness > 0 && cond.thermal_conductivity > 0) {
+                                    // F = (k / (thickness * 21000)) for fire-resistant insulation
+                                    F = Math.min(1.0, cond.thermal_conductivity / (cond.insulation_thickness * 21000 / 904));
+                                }
+
+                                // Calculate wetted surface area
+                                const wettedVesselAreas = calcVesselAreas({ ...vesselDetails, max_liquid_level: cond.liquid_level });
+                                const wettedArea = wettedVesselAreas.wettedArea;
+
+                                // Total heat absorption Q = C * F * A^0.82
+                                const Q = heatAbsorptionConstant * F * Math.pow(wettedArea, 0.82);
+
+                                // Latent heat of vaporization (simplified - user can input or use default)
+                                const latentHeat = cond.latent_heat || 150; // Btu/lb
+
+                                // Relief load W = Q / λ
+                                const W = latentHeat > 0 ? Q / latentHeat : 0;
+
+                                // Calculate required area using API 520 vapor equation
+                                const T1_R = T_bubble + 459.67;
+                                const Z = 1.0;
+                                const Kd = 0.975;
+                                const requiredArea = W > 0 && M > 0 && p1_psia > 0
+                                    ? (W * Math.sqrt(T1_R * Z)) / (C * Kd * p1_psia * 1.0 * 1.0 * Math.sqrt(M))
+                                    : 0;
+
+                                // Get selected orifice info
+                                const selectedOrifice = ORIFICES.find(o => o.size === deviceInfo.selected_orifice);
+                                const ratedArea = selectedOrifice ? selectedOrifice.area : 0;
+                                const ratedReliefLoad = ratedArea > 0 && M > 0 && p1_psia > 0
+                                    ? (ratedArea * C * Kd * p1_psia * 1.0 * 1.0 * Math.sqrt(M)) / Math.sqrt(T1_R * Z)
+                                    : 0;
+
+                                return (
                                 <div className="bg-white rounded-xl shadow-lg p-6">
                                     <div className="flex items-center space-x-3 mb-4">
-                                        <span className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-gray-200 text-gray-700 font-bold text-sm">1A</span>
+                                        <span className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-orange-200 text-orange-700 font-bold text-sm">1A</span>
                                         <span className="text-xl">🔥</span>
-                                        <h3 className="text-lg font-semibold">Fire-Wetted (Liquid Boil up)</h3>
+                                        <h3 className="text-lg font-semibold">1A - Fire-Wetted (Liquid Boil up) - API 521 6th Ed.</h3>
                                     </div>
-                                    <div className="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-4">
-                                        <p className="text-sm text-gray-500">Fire-Wetted calculation section coming soon...</p>
+
+                                    {/* Relief Device Sizing Summary */}
+                                    <div className="bg-gray-100 rounded-lg p-4 mb-4">
+                                        <h4 className="font-medium text-gray-700 mb-3">Relief Device Sizing Summary</h4>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="bg-white rounded-lg p-3 border border-gray-200">
+                                                <h5 className="text-xs font-semibold text-gray-500 uppercase mb-2">Required</h5>
+                                                <div className="space-y-2">
+                                                    <div className="flex justify-between">
+                                                        <span className="text-sm text-gray-600">Relief Load</span>
+                                                        <span className="text-sm font-medium">{W > 0 ? W.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} <span className="text-xs text-gray-400">lb/hr</span></span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span className="text-sm text-gray-600">Relief Area</span>
+                                                        <span className="text-sm font-medium">{requiredArea > 0 ? requiredArea.toFixed(4) : '-'} <span className="text-xs text-gray-400">in²</span></span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="bg-white rounded-lg p-3 border border-gray-200">
+                                                <h5 className="text-xs font-semibold text-gray-500 uppercase mb-2">Rated ({selectedOrifice ? selectedOrifice.letter : '-'})</h5>
+                                                <div className="space-y-2">
+                                                    <div className="flex justify-between">
+                                                        <span className="text-sm text-gray-600">Relief Load</span>
+                                                        <span className="text-sm font-medium">{ratedReliefLoad > 0 ? ratedReliefLoad.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} <span className="text-xs text-gray-400">lb/hr</span></span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span className="text-sm text-gray-600">Relief Area</span>
+                                                        <span className="text-sm font-medium">{ratedArea > 0 ? ratedArea.toFixed(3) : '-'} <span className="text-xs text-gray-400">in²</span></span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {ratedArea > 0 && requiredArea > 0 && (
+                                            <div className="mt-3 pt-3 border-t border-gray-200">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-sm text-gray-600">Utilization</span>
+                                                    <span className={`text-sm font-bold ${(requiredArea / ratedArea * 100) <= 100 ? 'text-green-600' : 'text-red-600'}`}>
+                                                        {(requiredArea / ratedArea * 100).toFixed(1)}%
+                                                        {(requiredArea / ratedArea * 100) <= 100 ? ' ✓' : ' (Undersized!)'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Latent Heat Calculation Parameters */}
+                                    <div className="mb-6">
+                                        <h4 className="font-medium text-gray-700 mb-3">Latent Heat Calculation</h4>
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 bg-blue-50 rounded-lg p-4">
+                                            <div>
+                                                <p className="text-xs text-gray-500">Ambient Pressure</p>
+                                                <p className="font-semibold">14.69 <span className="text-xs text-gray-400">psia</span></p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500">Relieving Pressure (P<sub>1</sub>)</p>
+                                                <p className="font-semibold">{p1_psia.toFixed(1)} <span className="text-xs text-gray-400">psia</span></p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500">Critical Pressure (P<sub>crit</sub>)</p>
+                                                <p className="font-semibold">{Pcrit > 0 ? Pcrit.toFixed(0) : '—'} <span className="text-xs text-gray-400">psia</span></p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500">Fluid Type</p>
+                                                <p className="font-semibold">{isMultiComponent ? 'MULTI-COMPONENT' : 'SINGLE'}</p>
+                                            </div>
+                                        </div>
+                                        <div className="mt-2 grid grid-cols-2 gap-4 bg-blue-50 rounded-lg p-4">
+                                            <div>
+                                                <p className="text-xs text-gray-500">Allowable Overpressure</p>
+                                                <p className="font-semibold">21%</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500">Molecular Weight</p>
+                                                <p className="font-semibold">{M > 0 ? M.toFixed(2) : '—'} <span className="text-xs text-gray-400">lb/lbmol</span></p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Heat Exchanger Diagram */}
+                                    <div className="mb-6 flex justify-center">
+                                        <svg width="300" height="100" viewBox="0 0 300 100">
+                                            {/* Stream A arrow */}
+                                            <line x1="20" y1="50" x2="100" y2="50" stroke="#3B82F6" strokeWidth="2" markerEnd="url(#arrowBlue)"/>
+                                            <text x="60" y="35" textAnchor="middle" className="text-xs" fill="#3B82F6">Stream A</text>
+
+                                            {/* Heat exchanger circle */}
+                                            <circle cx="150" cy="50" r="35" fill="#FEE2E2" stroke="#DC2626" strokeWidth="2"/>
+                                            <path d="M130 40 Q140 50 130 60 Q140 50 150 60 Q160 50 170 60 Q160 50 170 40" fill="none" stroke="#DC2626" strokeWidth="2"/>
+                                            <text x="150" y="90" textAnchor="middle" className="text-xs" fill="#DC2626">Heat Input</text>
+
+                                            {/* Stream B arrow */}
+                                            <line x1="200" y1="50" x2="280" y2="50" stroke="#10B981" strokeWidth="2" markerEnd="url(#arrowGreen)"/>
+                                            <text x="240" y="35" textAnchor="middle" className="text-xs" fill="#10B981">Stream B</text>
+
+                                            {/* Arrow markers */}
+                                            <defs>
+                                                <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                                                    <path d="M0,0 L0,6 L9,3 z" fill="#3B82F6"/>
+                                                </marker>
+                                                <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                                                    <path d="M0,0 L0,6 L9,3 z" fill="#10B981"/>
+                                                </marker>
+                                            </defs>
+                                        </svg>
+                                    </div>
+
+                                    {/* Stream A & B Properties */}
+                                    <div className="grid grid-cols-2 gap-4 mb-6">
+                                        {/* Stream A */}
+                                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                            <h5 className="font-medium text-blue-800 mb-3">Stream A Properties (Liquid)</h5>
+                                            <div className="space-y-2 text-sm">
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-600">Vapor Fraction</span>
+                                                    <span className="font-medium">0.00</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-600">Pressure</span>
+                                                    <span className="font-medium">{p1_psia.toFixed(0)} psia</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-600">Temperature (Bubble Pt)</span>
+                                                    <span className="font-medium">{T_bubble.toFixed(1)} °F</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {/* Stream B */}
+                                        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                                            <h5 className="font-medium text-green-800 mb-3">Stream B Properties (5% Vaporized)</h5>
+                                            <div className="space-y-2 text-sm">
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-600">Vapor Fraction</span>
+                                                    <span className="font-medium">0.05</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-600">Pressure</span>
+                                                    <span className="font-medium">{p1_psia.toFixed(0)} psia</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-600">Mass Vaporized</span>
+                                                    <span className="font-medium">{streamB_massVaporized.toFixed(0)} lb/hr</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Vessel Details for Fire Wetted */}
+                                    <div className="mb-6 bg-orange-50 border border-orange-200 rounded-lg p-4">
+                                        <h4 className="font-medium text-orange-800 mb-3">Vessel Details (Fire Wetted)</h4>
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                            <div>
+                                                <p className="text-xs text-gray-500">Orientation</p>
+                                                <p className="font-semibold capitalize">{vesselDetails.orientation}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500">Inner Diameter</p>
+                                                <p className="font-semibold">{vesselDetails.inner_diameter} in</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500">Length/Height</p>
+                                                <p className="font-semibold">{vesselDetails.seam_to_seam} ft</p>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs text-gray-500 mb-1">Liquid Level (%)</label>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    max="100"
+                                                    value={cond.liquid_level}
+                                                    onChange={(e) => updateScenarioCondition('fire_wetted', 'liquid_level', e.target.value)}
+                                                    className="w-full px-2 py-1 border border-orange-300 rounded text-sm focus:outline-none focus:border-orange-500"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="mt-3 pt-3 border-t border-orange-200">
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-sm text-gray-600">Wetted Surface Area (A<sub>ws</sub>)</span>
+                                                <span className="text-lg font-bold text-orange-700">{wettedArea.toFixed(1)} ft²</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Heat Absorption Inputs */}
+                                    <div className="mb-6">
+                                        <h4 className="font-medium text-gray-700 mb-3">Required Relieving Rate Calculation</h4>
+                                        <div className="grid grid-cols-2 gap-4 bg-green-50 border border-green-200 rounded-lg p-4">
+                                            <div>
+                                                <label className="flex items-center space-x-2 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={cond.prompt_firefighting}
+                                                        onChange={(e) => updateScenarioCondition('fire_wetted', 'prompt_firefighting', e.target.checked)}
+                                                        className="w-4 h-4 text-green-600 border-gray-300 rounded"
+                                                    />
+                                                    <span className="text-sm text-gray-700">Prompt Firefighting & Drainage?</span>
+                                                </label>
+                                                <p className="text-xs text-gray-500 mt-1">If yes, C₂ = 34,500. If no, C₁ = 21,000</p>
+                                            </div>
+                                            <div>
+                                                <label className="flex items-center space-x-2 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={cond.is_insulated}
+                                                        onChange={(e) => updateScenarioCondition('fire_wetted', 'is_insulated', e.target.checked)}
+                                                        className="w-4 h-4 text-green-600 border-gray-300 rounded"
+                                                    />
+                                                    <span className="text-sm text-gray-700">Vessel Insulated?</span>
+                                                </label>
+                                                <p className="text-xs text-gray-500 mt-1">Affects environment factor F</p>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs text-gray-500 mb-1">Latent Heat of Vaporization (λ)</label>
+                                                <div className="flex items-center">
+                                                    <input
+                                                        type="number"
+                                                        value={cond.latent_heat}
+                                                        onChange={(e) => updateScenarioCondition('fire_wetted', 'latent_heat', e.target.value)}
+                                                        className="w-full px-2 py-1 border border-green-300 rounded text-sm focus:outline-none focus:border-green-500"
+                                                    />
+                                                    <span className="ml-2 text-xs text-gray-500">Btu/lb</span>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500">Heat Absorption Constant</p>
+                                                <p className="font-semibold">{cond.prompt_firefighting ? 'C₂ = 34,500' : 'C₁ = 21,000'}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Calculated Results */}
+                                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                                        <h4 className="font-medium text-red-800 mb-3">Heat Absorption & Relief Load</h4>
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                            <div>
+                                                <p className="text-xs text-gray-500">Environment Factor (F)</p>
+                                                <p className="font-semibold text-red-700">{F.toFixed(2)}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500">Wetted Area (A)</p>
+                                                <p className="font-semibold text-red-700">{wettedArea.toFixed(1)} ft²</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500">Total Heat Absorption (Q)</p>
+                                                <p className="font-semibold text-red-700">{Q > 0 ? Q.toLocaleString(undefined, {maximumFractionDigits: 0}) : '—'} Btu/hr</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500">Relief Load (W)</p>
+                                                <p className="font-semibold text-red-700">{W > 0 ? W.toLocaleString(undefined, {maximumFractionDigits: 0}) : '—'} lb/hr</p>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
-                            )}
+                                );
+                            })()}
 
                             {/* Blocked Outlet (2A) Section */}
                             {(activeConditionsTab === 'blocked_vapor' || (applicableScenarios.length === 1 && scenarioSelections.blocked_vapor?.applicable)) && (() => {
