@@ -101,6 +101,7 @@
             { id: 'fire_unwetted', label: '1B', name: '1B - Fire-Unwetted (Vapor)', icon: '💨', desc: 'Fire exposure on vapor space only', compLabel: 'Fire Unwetted Vapor Composition', presets: ['natural_gas', 'rich_gas', 'water_pure'] },
             { id: 'blocked_vapor', label: '2A', name: '2A - Blocked Outlet - Vapor', icon: '⛔', desc: 'Blocked vapor outlet with upstream source', compLabel: 'Blocked Outlet Vapor Composition', presets: ['natural_gas', 'rich_gas', 'water_pure'] },
             { id: 'cv_failure', label: '3', name: '3 - CV Failure - Vapor', icon: '⚠️', desc: 'Control valve fails open, vapor service', compLabel: 'CV Failure Vapor Composition', presets: ['natural_gas', 'rich_gas', 'water_pure'] },
+            { id: 'hydraulic_thermal', label: '4', name: '4 - Hydraulic Thermal Expansion', icon: '🌡️', desc: 'Liquid-full system thermal expansion per API 521 4.4.12', noCalc: true },
         ];
 
         // Bypass valve Cv lookup tables
@@ -359,6 +360,7 @@
                 fire_unwetted: { applicable: false, notes: '' },
                 blocked_vapor: { applicable: false, notes: '' },
                 cv_failure: { applicable: false, notes: '' },
+                hydraulic_thermal: { applicable: false, notes: '' },
             });
 
             // File uploads
@@ -399,6 +401,7 @@
                     insulation_thickness: 0, // inches
                     thermal_conductivity: 4, // Btu-in/hr-ft²-°F
                     stream_a_mass_flow: 1000, // lb/hr inlet
+                    show_math: false, // Toggle to show multi-component latent heat analysis
                 },
                 fire_unwetted: {
                     normal_op_pressure: 80,
@@ -1167,8 +1170,10 @@
                 includeAppendix: true
             });
 
-            // Get list of applicable scenarios
+            // Get list of applicable scenarios (all applicable, including noCalc)
             const applicableScenarios = SCENARIOS.filter(s => scenarioSelections[s.id]?.applicable);
+            // Scenarios that need calculations (exclude noCalc scenarios like hydraulic thermal)
+            const calculableScenarios = applicableScenarios.filter(s => !s.noCalc);
 
             // Apply preset to a specific scenario's composition
             const handlePresetChange = (presetId, scenarioId) => {
@@ -1716,7 +1721,7 @@
             };
 
             // Check if all applicable scenarios have valid compositions (>=99%)
-            const allCompositionsValid = applicableScenarios.every(s => getTotalMol(s.id) >= 99);
+            const allCompositionsValid = calculableScenarios.every(s => getTotalMol(s.id) >= 99);
 
             // Updated step order: Device -> Scenario -> Fluid -> Calcs -> Results
             const STEP_LABELS = ['Device', 'Scenario', 'Fluid', 'Calcs', 'Results'];
@@ -1946,7 +1951,25 @@
                             <p className="text-sm text-gray-600 mb-6">Check "Applicable" for scenarios that require calculation. Add notes to document your justification.</p>
 
                             <div className="space-y-4">
-                                {SCENARIOS.map((s) => (
+                                {SCENARIOS.map((s) => {
+                                    // Auto-fill notes for hydraulic thermal expansion
+                                    const getDefaultNotes = () => {
+                                        if (s.id !== 'hydraulic_thermal') return '';
+                                        if (!scenarioSelections[s.id]?.applicable) {
+                                            return 'The system is not expected to operate liquid-full or has a different applicable scenario.';
+                                        }
+                                        return `Per API 521 4.4.12.2, the required relieving rate due to thermal expansion is minimal and difficult to calculate. Because of this, the required relieving rate is generally not calculated when the protected system meets one of the criteria described below, as detailed in API 521 4.4.12.3:
+
+1. The protected system consists of long, aboveground, uninsulated pipelines of large diameter.
+2. The protected system includes large vessels or exchangers operating liquid full.
+
+Because the two cases above do not apply, a detailed analysis has not been performed.`;
+                                    };
+
+                                    const currentNotes = scenarioSelections[s.id]?.notes;
+                                    const displayNotes = s.id === 'hydraulic_thermal' && !currentNotes ? getDefaultNotes() : currentNotes;
+
+                                    return (
                                     <div
                                         key={s.id}
                                         className={`p-4 border-2 rounded-xl ${scenarioSelections[s.id]?.applicable ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}
@@ -1958,6 +1981,7 @@
                                                 <div>
                                                     <h3 className="font-semibold text-gray-900">{s.name}</h3>
                                                     <p className="text-sm text-gray-500">{s.desc}</p>
+                                                    {s.noCalc && <span className="inline-block mt-1 px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded">No Calculation Required</span>}
                                                 </div>
                                             </div>
                                             <label className="flex items-center space-x-2 cursor-pointer">
@@ -1967,28 +1991,37 @@
                                                 <input
                                                     type="checkbox"
                                                     checked={scenarioSelections[s.id]?.applicable || false}
-                                                    onChange={(e) => setScenarioSelections(prev => ({
-                                                        ...prev,
-                                                        [s.id]: { ...prev[s.id], applicable: e.target.checked }
-                                                    }))}
+                                                    onChange={(e) => {
+                                                        const newApplicable = e.target.checked;
+                                                        setScenarioSelections(prev => ({
+                                                            ...prev,
+                                                            [s.id]: {
+                                                                ...prev[s.id],
+                                                                applicable: newApplicable,
+                                                                // Auto-fill notes for hydraulic thermal
+                                                                notes: s.id === 'hydraulic_thermal' ? '' : prev[s.id]?.notes
+                                                            }
+                                                        }));
+                                                    }}
                                                     className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                                 />
                                             </label>
                                         </div>
                                         <div className="mt-3">
                                             <textarea
-                                                value={scenarioSelections[s.id]?.notes || ''}
+                                                value={displayNotes || ''}
                                                 onChange={(e) => setScenarioSelections(prev => ({
                                                     ...prev,
                                                     [s.id]: { ...prev[s.id], notes: e.target.value }
                                                 }))}
-                                                className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-blue-500 resize-none"
-                                                rows="2"
+                                                className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-blue-500 resize-none ${s.id === 'hydraulic_thermal' ? 'bg-gray-50' : ''}`}
+                                                rows={s.id === 'hydraulic_thermal' ? 4 : 2}
                                                 placeholder="Notes / Justification (e.g., 'The system is not expected to operate with a liquid level.')"
                                             />
                                         </div>
                                     </div>
-                                ))}
+                                    );
+                                })}
                             </div>
 
                             <div className="flex justify-between mt-6">
@@ -2020,16 +2053,16 @@
                             <h2 className="text-xl font-semibold mb-2">Select Fluid Compositions</h2>
                             <p className="text-sm text-gray-600 mb-6">
                                 Enter composition for each applicable scenario.
-                                {applicableScenarios.length > 1 && " Use 'Copy from first' to duplicate the first composition."}
+                                {calculableScenarios.length > 1 && " Use 'Copy from first' to duplicate the first composition."}
                             </p>
 
                             {/* Scenario Composition Sections */}
                             <div className="space-y-6">
-                                {applicableScenarios.map((scenarioItem, idx) => {
+                                {calculableScenarios.map((scenarioItem, idx) => {
                                     const scenarioComp = compositions[scenarioItem.id] || {};
                                     const scenarioTotal = getTotalMol(scenarioItem.id);
                                     const isFirst = idx === 0;
-                                    const firstScenarioId = applicableScenarios[0]?.id;
+                                    const firstScenarioId = calculableScenarios[0]?.id;
 
                                     return (
                                         <div key={scenarioItem.id} className="border rounded-xl p-4">
@@ -2140,11 +2173,11 @@
 
                     {/* Step 4: Operating Conditions - Scenario Specific with Tabs */}
                     {step === 4 && (() => {
-                        // Set active tab to first applicable scenario if not set
-                        if (!activeConditionsTab || !scenarioSelections[activeConditionsTab]?.applicable) {
-                            const firstApplicable = applicableScenarios[0];
-                            if (firstApplicable && activeConditionsTab !== firstApplicable.id) {
-                                setTimeout(() => setActiveConditionsTab(firstApplicable.id), 0);
+                        // Set active tab to first calculable scenario if not set
+                        if (!activeConditionsTab || !scenarioSelections[activeConditionsTab]?.applicable || SCENARIOS.find(s => s.id === activeConditionsTab)?.noCalc) {
+                            const firstCalculable = calculableScenarios[0];
+                            if (firstCalculable && activeConditionsTab !== firstCalculable.id) {
+                                setTimeout(() => setActiveConditionsTab(firstCalculable.id), 0);
                             }
                         }
                         return (
@@ -2154,9 +2187,9 @@
                                 <p className="text-sm text-gray-600 mb-4">Enter conditions for each applicable scenario. Green fields are inputs, blue fields are calculated outputs.</p>
 
                                 {/* Scenario Tabs */}
-                                {applicableScenarios.length > 1 && (
+                                {calculableScenarios.length > 1 && (
                                     <div className="flex border-b border-gray-200">
-                                        {applicableScenarios.map((s) => (
+                                        {calculableScenarios.map((s) => (
                                             <button
                                                 key={s.id}
                                                 onClick={() => setActiveConditionsTab(s.id)}
@@ -2174,7 +2207,7 @@
                             </div>
 
                             {/* Fire-Unwetted (1B) Section */}
-                            {(activeConditionsTab === 'fire_unwetted' || (applicableScenarios.length === 1 && scenarioSelections.fire_unwetted?.applicable)) && (() => {
+                            {(activeConditionsTab === 'fire_unwetted' || (calculableScenarios.length === 1 && scenarioSelections.fire_unwetted?.applicable)) && (() => {
                                 const comp = compositions.fire_unwetted || {};
                                 const cond = scenarioConditions.fire_unwetted;
                                 const setP = parseFloat(deviceInfo.set_pressure) || 0;
@@ -2548,7 +2581,7 @@
                             })()}
 
                             {/* Fire-Wetted (1A) Section */}
-                            {(activeConditionsTab === 'fire_wetted' || (applicableScenarios.length === 1 && scenarioSelections.fire_wetted?.applicable)) && (() => {
+                            {(activeConditionsTab === 'fire_wetted' || (calculableScenarios.length === 1 && scenarioSelections.fire_wetted?.applicable)) && (() => {
                                 const comp = compositions.fire_wetted || {};
                                 const cond = scenarioConditions.fire_wetted;
                                 const setP = parseFloat(deviceInfo.set_pressure) || 0;
@@ -2566,7 +2599,6 @@
 
                                 // Calculate bubble point temperature using PR-EOS
                                 const T_bubble = compEntries.length > 0 ? calcBubblePoint(comp, p1_psia) : cond.normal_op_temp;
-                                const T1_R = T_bubble + 459.67;
 
                                 // Heat absorption constant: checked = 21000, unchecked = 34500
                                 const heatAbsorptionConstant = cond.prompt_firefighting ? 21000 : 34500;
@@ -2654,20 +2686,24 @@
                                 // Scale Q to 1000 lb/hr basis for comparison
                                 const Q_total_basis = W > 0 ? Q * (massFlowBasis / W) : 0;
 
+                                // Relieving temperature is Stream B (where vapor is generated)
+                                const T1_R = T_B + 459.67;
+
                                 // Calculate required area using API 520 vapor equation
+                                // Use vapor MW (not bulk MW) since the relieving fluid is vapor
                                 const Z = 1.0;
                                 const Kd = 0.975;
                                 const Kb = 1.0;
                                 const Kc = 1.0;
-                                const requiredArea = W > 0 && M > 0 && p1_psia > 0
-                                    ? (W * Math.sqrt(T1_R * Z)) / (C * Kd * p1_psia * Kb * Kc * Math.sqrt(M))
+                                const requiredArea = W > 0 && mw_vapor > 0 && p1_psia > 0
+                                    ? (W * Math.sqrt(T1_R * Z)) / (C * Kd * p1_psia * Kb * Kc * Math.sqrt(mw_vapor))
                                     : 0;
 
                                 // Get selected orifice info
                                 const selectedOrifice = ORIFICES.find(o => o.size === deviceInfo.selected_orifice);
                                 const ratedArea = selectedOrifice ? selectedOrifice.area : 0;
-                                const ratedReliefLoad = ratedArea > 0 && M > 0 && p1_psia > 0
-                                    ? (ratedArea * C * Kd * p1_psia * Kb * Kc * Math.sqrt(M)) / Math.sqrt(T1_R * Z)
+                                const ratedReliefLoad = ratedArea > 0 && mw_vapor > 0 && p1_psia > 0
+                                    ? (ratedArea * C * Kd * p1_psia * Kb * Kc * Math.sqrt(mw_vapor)) / Math.sqrt(T1_R * Z)
                                     : 0;
 
                                 return (
@@ -2981,24 +3017,6 @@
                                                 </div>
                                             </div>
 
-                                            {/* Fluid Type - Display */}
-                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                                                <span className="text-sm text-gray-700">Fluid Type</span>
-                                                <div className="flex items-center space-x-2">
-                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{isMultiComponent ? 'MULTI-COMPONENT' : 'SINGLE'}</span>
-                                                    <span className="text-xs text-gray-500 w-12"></span>
-                                                </div>
-                                            </div>
-
-                                            {/* Molecular Weight - Display */}
-                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                                                <span className="text-sm text-gray-700">Molecular Weight (M)</span>
-                                                <div className="flex items-center space-x-2">
-                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{M > 0 ? M.toFixed(2) : '-'}</span>
-                                                    <span className="text-xs text-gray-500 w-12">lb/lbmol</span>
-                                                </div>
-                                            </div>
-
                                             {/* Insulation Status - Display */}
                                             <div className="flex items-center justify-between py-2 border-b border-gray-100">
                                                 <span className="text-sm text-gray-700">Insulation Status</span>
@@ -3044,20 +3062,22 @@
                                                 </div>
                                             </div>
 
-                                            {/* Latent Heat - Display (calculated) */}
+                                            {/* Latent Heat - Display (use multi-comp λ for mixtures, single comp for pure) */}
                                             <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                                                <span className="text-sm text-gray-700">Latent Heat of Vaporization (λ) - from composition</span>
+                                                <span className="text-sm text-gray-700">
+                                                    Latent Heat of Vaporization (λ){isMultiComponent && cond.latent_heat_safety_factor && <span className="text-blue-600 text-xs ml-1">(×0.90 SF)</span>}
+                                                </span>
                                                 <div className="flex items-center space-x-2">
-                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{latentHeat > 0 ? latentHeat.toFixed(1) : '-'}</span>
+                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{effectiveLambda > 0 ? effectiveLambda.toFixed(1) : '-'}</span>
                                                     <span className="text-xs text-gray-500 w-12">Btu/lb</span>
                                                 </div>
                                             </div>
 
-                                            {/* Relieving Temperature - Display */}
+                                            {/* Relieving Temperature - Stream B temperature */}
                                             <div className="flex items-center justify-between py-2 border-b border-gray-100">
                                                 <span className="text-sm text-gray-700">Relieving Temperature (T₁)</span>
                                                 <div className="flex items-center space-x-2">
-                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{T_bubble > 0 ? T_bubble.toFixed(0) : '-'}</span>
+                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{T_B > 0 ? T_B.toFixed(0) : '-'}</span>
                                                     <span className="text-xs text-gray-500 w-12">°F</span>
                                                 </div>
                                             </div>
@@ -3072,9 +3092,18 @@
                                             </div>
                                         </div>
 
-                                        {/* ========== STREAM A/B MULTI-COMPONENT ANALYSIS (TEMPORARY) ========== */}
-                                        <div className="mt-6 bg-purple-50 border-2 border-purple-300 rounded-lg p-4">
-                                            <h4 className="font-bold text-purple-800 mb-4">Multi-Component Latent Heat Analysis (NGL Stream - Debug)</h4>
+                                        {/* ========== STREAM A/B MULTI-COMPONENT ANALYSIS (Collapsible) ========== */}
+                                        {isMultiComponent && (
+                                        <div className="mt-4">
+                                            <button
+                                                onClick={() => updateScenarioCondition('fire_wetted', 'show_math', !cond.show_math)}
+                                                className="text-xs text-purple-600 hover:text-purple-800 underline mb-2"
+                                            >
+                                                {cond.show_math ? 'Hide Calculation Details' : 'Show Calculation Details'}
+                                            </button>
+                                            {cond.show_math && (
+                                            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-xs">
+                                                <h5 className="font-semibold text-purple-800 mb-2">Multi-Component Latent Heat Analysis</h5>
 
                                             {/* Heat Exchanger Diagram */}
                                             <div className="mb-4 flex justify-center">
@@ -3193,13 +3222,15 @@
                                                     </div>
                                                 </div>
                                             </div>
+                                            )}
                                         </div>
+                                        )}
                                     </div>
                                 );
                             })()}
 
                             {/* Blocked Outlet (2A) Section */}
-                            {(activeConditionsTab === 'blocked_vapor' || (applicableScenarios.length === 1 && scenarioSelections.blocked_vapor?.applicable)) && (() => {
+                            {(activeConditionsTab === 'blocked_vapor' || (calculableScenarios.length === 1 && scenarioSelections.blocked_vapor?.applicable)) && (() => {
                                 const comp = compositions.blocked_vapor || {};
                                 const cond = scenarioConditions.blocked_vapor;
                                 const setP = parseFloat(deviceInfo.set_pressure) || 0;
@@ -3416,7 +3447,7 @@
                             })()}
 
                             {/* CV Failure (3) Section */}
-                            {(activeConditionsTab === 'cv_failure' || (applicableScenarios.length === 1 && scenarioSelections.cv_failure?.applicable)) && (() => {
+                            {(activeConditionsTab === 'cv_failure' || (calculableScenarios.length === 1 && scenarioSelections.cv_failure?.applicable)) && (() => {
                                 const comp = compositions.cv_failure || {};
                                 const cond = scenarioConditions.cv_failure;
                                 const setP = parseFloat(deviceInfo.set_pressure) || 150;
