@@ -43,23 +43,23 @@
         // Component Database
         // Component Database - Added Cp (ideal gas molar heat capacity at 25°C, J/mol·K)
         const COMPONENTS = {
-            methane: { name: 'Methane', formula: 'C1', mw: 16.043, tc: 190.56, pc: 4599000, omega: 0.0115, cp: 35.69, lfl: 5.0, ufl: 15.0 },
-            ethane: { name: 'Ethane', formula: 'C2', mw: 30.070, tc: 305.32, pc: 4872000, omega: 0.0995, cp: 52.49, lfl: 3.0, ufl: 12.4 },
-            propane: { name: 'Propane', formula: 'C3', mw: 44.096, tc: 369.83, pc: 4248000, omega: 0.1523, cp: 73.60, lfl: 2.1, ufl: 9.5 },
-            isobutane: { name: 'Isobutane', formula: 'iC4', mw: 58.122, tc: 407.85, pc: 3640000, omega: 0.1835, cp: 96.65, lfl: 1.8, ufl: 8.4 },
-            nbutane: { name: 'n-Butane', formula: 'nC4', mw: 58.122, tc: 425.12, pc: 3796000, omega: 0.2002, cp: 97.45, lfl: 1.8, ufl: 8.4 },
-            isopentane: { name: 'Isopentane', formula: 'iC5', mw: 72.149, tc: 460.35, pc: 3381000, omega: 0.2275, cp: 120.2, lfl: 1.4, ufl: 7.6 },
-            npentane: { name: 'n-Pentane', formula: 'nC5', mw: 72.149, tc: 469.70, pc: 3370000, omega: 0.2515, cp: 120.1, lfl: 1.4, ufl: 7.8 },
-            nhexane: { name: 'n-Hexane', formula: 'C6', mw: 86.175, tc: 507.60, pc: 3025000, omega: 0.3013, cp: 142.6, lfl: 1.2, ufl: 7.4 },
-            nheptane: { name: 'n-Heptane', formula: 'C7', mw: 100.202, tc: 540.20, pc: 2740000, omega: 0.3495, cp: 165.2, lfl: 1.05, ufl: 6.7 },
-            noctane: { name: 'n-Octane', formula: 'C8', mw: 114.229, tc: 568.70, pc: 2490000, omega: 0.3996, cp: 187.8, lfl: 1.0, ufl: 6.5 },
-            nnonane: { name: 'n-Nonane', formula: 'C9', mw: 128.255, tc: 594.60, pc: 2290000, omega: 0.4435, cp: 210.2, lfl: 0.8, ufl: 5.9 },
-            ndecane: { name: 'n-Decane', formula: 'C10', mw: 142.282, tc: 617.70, pc: 2110000, omega: 0.4923, cp: 232.7, lfl: 0.8, ufl: 5.4 },
-            nitrogen: { name: 'Nitrogen', formula: 'N2', mw: 28.014, tc: 126.20, pc: 3398000, omega: 0.0377, cp: 29.12, lfl: null, ufl: null },
-            oxygen: { name: 'Oxygen', formula: 'O2', mw: 31.999, tc: 154.58, pc: 5043000, omega: 0.0222, cp: 29.38, lfl: null, ufl: null },
-            co2: { name: 'CO2', formula: 'CO2', mw: 44.010, tc: 304.21, pc: 7383000, omega: 0.2236, cp: 37.13, lfl: null, ufl: null },
-            h2s: { name: 'H2S', formula: 'H2S', mw: 34.081, tc: 373.53, pc: 8963000, omega: 0.0942, cp: 34.23, lfl: 4.0, ufl: 44.0 },
-            water: { name: 'Water', formula: 'H2O', mw: 18.015, tc: 647.10, pc: 22064000, omega: 0.3449, cp: 33.59, lfl: null, ufl: null },
+            methane: { name: 'Methane', formula: 'C1', mw: 16.043, tc: 190.56, pc: 4599000, omega: 0.0115, cp: 35.69, lfl: 5.0, ufl: 15.0, hv: 219 },
+            ethane: { name: 'Ethane', formula: 'C2', mw: 30.070, tc: 305.32, pc: 4872000, omega: 0.0995, cp: 52.49, lfl: 3.0, ufl: 12.4, hv: 210 },
+            propane: { name: 'Propane', formula: 'C3', mw: 44.096, tc: 369.83, pc: 4248000, omega: 0.1523, cp: 73.60, lfl: 2.1, ufl: 9.5, hv: 183 },
+            isobutane: { name: 'Isobutane', formula: 'iC4', mw: 58.122, tc: 407.85, pc: 3640000, omega: 0.1835, cp: 96.65, lfl: 1.8, ufl: 8.4, hv: 157 },
+            nbutane: { name: 'n-Butane', formula: 'nC4', mw: 58.122, tc: 425.12, pc: 3796000, omega: 0.2002, cp: 97.45, lfl: 1.8, ufl: 8.4, hv: 165 },
+            isopentane: { name: 'Isopentane', formula: 'iC5', mw: 72.149, tc: 460.35, pc: 3381000, omega: 0.2275, cp: 120.2, lfl: 1.4, ufl: 7.6, hv: 147 },
+            npentane: { name: 'n-Pentane', formula: 'nC5', mw: 72.149, tc: 469.70, pc: 3370000, omega: 0.2515, cp: 120.1, lfl: 1.4, ufl: 7.8, hv: 153 },
+            nhexane: { name: 'n-Hexane', formula: 'C6', mw: 86.175, tc: 507.60, pc: 3025000, omega: 0.3013, cp: 142.6, lfl: 1.2, ufl: 7.4, hv: 144 },
+            nheptane: { name: 'n-Heptane', formula: 'C7', mw: 100.202, tc: 540.20, pc: 2740000, omega: 0.3495, cp: 165.2, lfl: 1.05, ufl: 6.7, hv: 136 },
+            noctane: { name: 'n-Octane', formula: 'C8', mw: 114.229, tc: 568.70, pc: 2490000, omega: 0.3996, cp: 187.8, lfl: 1.0, ufl: 6.5, hv: 129 },
+            nnonane: { name: 'n-Nonane', formula: 'C9', mw: 128.255, tc: 594.60, pc: 2290000, omega: 0.4435, cp: 210.2, lfl: 0.8, ufl: 5.9, hv: 123 },
+            ndecane: { name: 'n-Decane', formula: 'C10', mw: 142.282, tc: 617.70, pc: 2110000, omega: 0.4923, cp: 232.7, lfl: 0.8, ufl: 5.4, hv: 118 },
+            nitrogen: { name: 'Nitrogen', formula: 'N2', mw: 28.014, tc: 126.20, pc: 3398000, omega: 0.0377, cp: 29.12, lfl: null, ufl: null, hv: 85 },
+            oxygen: { name: 'Oxygen', formula: 'O2', mw: 31.999, tc: 154.58, pc: 5043000, omega: 0.0222, cp: 29.38, lfl: null, ufl: null, hv: 91 },
+            co2: { name: 'CO2', formula: 'CO2', mw: 44.010, tc: 304.21, pc: 7383000, omega: 0.2236, cp: 37.13, lfl: null, ufl: null, hv: 234 },
+            h2s: { name: 'H2S', formula: 'H2S', mw: 34.081, tc: 373.53, pc: 8963000, omega: 0.0942, cp: 34.23, lfl: 4.0, ufl: 44.0, hv: 235 },
+            water: { name: 'Water', formula: 'H2O', mw: 18.015, tc: 647.10, pc: 22064000, omega: 0.3449, cp: 33.59, lfl: null, ufl: null, hv: 970 },
         };
 
         // Fluid Presets
@@ -476,6 +476,21 @@
                 return 520 * Math.sqrt(k * term);
             };
 
+            // Calculate latent heat of vaporization from composition (Btu/lb)
+            // For single component: use hv from component data
+            // For multi-component: mass-weighted average
+            const getLatentHeat = (composition) => {
+                let hv_mix = 0, totalMass = 0;
+                Object.entries(composition).forEach(([comp, molPct]) => {
+                    if (molPct > 0 && COMPONENTS[comp] && COMPONENTS[comp].hv) {
+                        const massFrac = molPct * COMPONENTS[comp].mw;
+                        totalMass += massFrac;
+                        hv_mix += massFrac * COMPONENTS[comp].hv;
+                    }
+                });
+                return totalMass > 0 ? hv_mix / totalMass : 150; // Default 150 Btu/lb if no data
+            };
+
             // API 521 Eqn (11): T1 = (p1/pn) * Tn
             const calcRelievingTemp = (p1_psia, pn_psig, Tn_F) => {
                 const pn_psia = pn_psig + AMBIENT_PRESSURE;
@@ -742,16 +757,13 @@
                     const T1 = cond.normal_op_temp;
                     const T1_R = T1 + 459.67;
 
-                    // Heat absorption
-                    const heatConst = cond.prompt_firefighting ? 34500 : 21000;
-                    let F = 1.0;
-                    if (cond.is_insulated && cond.insulation_thickness > 0) {
-                        F = Math.min(1.0, cond.thermal_conductivity / (cond.insulation_thickness * 21000 / 904));
-                    }
+                    // Heat absorption: checked = 21000, unchecked = 34500
+                    const heatConst = cond.prompt_firefighting ? 21000 : 34500;
+                    const F = 1.0; // Uninsulated
                     const wettedAreas = calcVesselAreas({ ...vesselDetails, max_liquid_level: cond.liquid_level });
                     const wettedArea = wettedAreas.wetted;
                     const Q = heatConst * F * Math.pow(wettedArea, 0.82);
-                    const latentHeat = cond.latent_heat || 150;
+                    const latentHeat = getLatentHeat(comp);
                     const W = latentHeat > 0 ? Q / latentHeat : 0;
 
                     const requiredArea = W > 0 && M > 0 && p1_psia > 0
@@ -2014,318 +2026,462 @@
                                 const isMultiComponent = compEntries.length > 1;
 
                                 // Calculate bubble point temperature (simplified - would need proper VLE)
-                                // For now, use a simplified correlation based on critical properties
                                 const T_bubble = cond.normal_op_temp; // Simplified: use normal op temp
+                                const T1_R = T_bubble + 459.67;
 
-                                // Stream A: Liquid at bubble point (vapor fraction = 0)
-                                const streamA_vaporFrac = 0.0;
-                                const streamA_massFlow = cond.stream_a_mass_flow || 1000;
-                                const streamA_molarFlow = M > 0 ? streamA_massFlow / M : 0;
+                                // Heat absorption constant: checked = 21000, unchecked = 34500
+                                const heatAbsorptionConstant = cond.prompt_firefighting ? 21000 : 34500;
 
-                                // Stream B: 5% vapor fraction (light ends vaporized)
-                                const streamB_vaporFrac = 0.05;
-                                const streamB_massVaporized = streamA_massFlow * streamB_vaporFrac;
-                                const streamB_molarVaporized = M > 0 ? streamB_massVaporized / M : 0;
+                                // Environment factor F = 1.0 (uninsulated)
+                                const F = 1.0;
 
-                                // Heat absorption constants
-                                const C1 = 21000; // No prompt firefighting/drainage
-                                const C2 = 34500; // With prompt firefighting/drainage
-                                const heatAbsorptionConstant = cond.prompt_firefighting ? C2 : C1;
-
-                                // Environment factor F
-                                let F = 1.0; // Bare vessel
-                                if (cond.is_insulated && cond.insulation_thickness > 0 && cond.thermal_conductivity > 0) {
-                                    // F = (k / (thickness * 21000)) for fire-resistant insulation
-                                    F = Math.min(1.0, cond.thermal_conductivity / (cond.insulation_thickness * 21000 / 904));
-                                }
-
-                                // Calculate wetted surface area
+                                // Calculate wetted surface area from vessel geometry
                                 const wettedVesselAreas = calcVesselAreas({ ...vesselDetails, max_liquid_level: cond.liquid_level });
                                 const wettedArea = wettedVesselAreas.wetted;
+                                const filledVolume_gal = wettedVesselAreas.volume_gal * (cond.liquid_level / 100);
 
                                 // Total heat absorption Q = C * F * A^0.82
                                 const Q = heatAbsorptionConstant * F * Math.pow(wettedArea, 0.82);
 
-                                // Latent heat of vaporization (simplified - user can input or use default)
-                                const latentHeat = cond.latent_heat || 150; // Btu/lb
+                                // Calculate latent heat from composition
+                                const latentHeat = getLatentHeat(comp);
 
                                 // Relief load W = Q / λ
                                 const W = latentHeat > 0 ? Q / latentHeat : 0;
 
                                 // Calculate required area using API 520 vapor equation
-                                const T1_R = T_bubble + 459.67;
                                 const Z = 1.0;
                                 const Kd = 0.975;
+                                const Kb = 1.0;
+                                const Kc = 1.0;
                                 const requiredArea = W > 0 && M > 0 && p1_psia > 0
-                                    ? (W * Math.sqrt(T1_R * Z)) / (C * Kd * p1_psia * 1.0 * 1.0 * Math.sqrt(M))
+                                    ? (W * Math.sqrt(T1_R * Z)) / (C * Kd * p1_psia * Kb * Kc * Math.sqrt(M))
                                     : 0;
 
                                 // Get selected orifice info
                                 const selectedOrifice = ORIFICES.find(o => o.size === deviceInfo.selected_orifice);
                                 const ratedArea = selectedOrifice ? selectedOrifice.area : 0;
                                 const ratedReliefLoad = ratedArea > 0 && M > 0 && p1_psia > 0
-                                    ? (ratedArea * C * Kd * p1_psia * 1.0 * 1.0 * Math.sqrt(M)) / Math.sqrt(T1_R * Z)
+                                    ? (ratedArea * C * Kd * p1_psia * Kb * Kc * Math.sqrt(M)) / Math.sqrt(T1_R * Z)
                                     : 0;
 
                                 return (
-                                <div className="bg-white rounded-xl shadow-lg p-6">
-                                    <div className="flex items-center space-x-3 mb-4">
-                                        <span className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-orange-200 text-orange-700 font-bold text-sm">1A</span>
-                                        <span className="text-xl">🔥</span>
-                                        <h3 className="text-lg font-semibold">1A - Fire-Wetted (Liquid Boil up) - API 521 6th Ed.</h3>
-                                    </div>
+                                    <div className="bg-white rounded-xl shadow-lg p-6">
+                                        <div className="flex items-center space-x-3 mb-4">
+                                            <span className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-orange-200 text-orange-700 font-bold text-sm">1A</span>
+                                            <span className="text-xl">🔥</span>
+                                            <h3 className="text-lg font-semibold">Fire-Wetted (Liquid Boil up) - API 521 6th Ed. 4.4.13.2</h3>
+                                        </div>
 
-                                    {/* Relief Device Sizing Summary */}
-                                    <div className="bg-gray-100 rounded-lg p-4 mb-4">
-                                        <h4 className="font-medium text-gray-700 mb-3">Relief Device Sizing Summary</h4>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="bg-white rounded-lg p-3 border border-gray-200">
-                                                <h5 className="text-xs font-semibold text-gray-500 uppercase mb-2">Required</h5>
-                                                <div className="space-y-2">
-                                                    <div className="flex justify-between">
-                                                        <span className="text-sm text-gray-600">Relief Load</span>
-                                                        <span className="text-sm font-medium">{W > 0 ? W.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} <span className="text-xs text-gray-400">lb/hr</span></span>
-                                                    </div>
-                                                    <div className="flex justify-between">
-                                                        <span className="text-sm text-gray-600">Relief Area</span>
-                                                        <span className="text-sm font-medium">{requiredArea > 0 ? requiredArea.toFixed(4) : '-'} <span className="text-xs text-gray-400">in²</span></span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className="bg-white rounded-lg p-3 border border-gray-200">
-                                                <h5 className="text-xs font-semibold text-gray-500 uppercase mb-2">Rated ({selectedOrifice ? selectedOrifice.letter : '-'})</h5>
-                                                <div className="space-y-2">
-                                                    <div className="flex justify-between">
-                                                        <span className="text-sm text-gray-600">Relief Load</span>
-                                                        <span className="text-sm font-medium">{ratedReliefLoad > 0 ? ratedReliefLoad.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} <span className="text-xs text-gray-400">lb/hr</span></span>
-                                                    </div>
-                                                    <div className="flex justify-between">
-                                                        <span className="text-sm text-gray-600">Relief Area</span>
-                                                        <span className="text-sm font-medium">{ratedArea > 0 ? ratedArea.toFixed(3) : '-'} <span className="text-xs text-gray-400">in²</span></span>
+                                        {/* Relief Device Sizing Summary - AT TOP */}
+                                        <div className="bg-gray-100 rounded-lg p-4 mb-4">
+                                            <h4 className="font-medium text-gray-700 mb-3">Relief Device Sizing Summary</h4>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="bg-white rounded-lg p-3 border border-gray-200">
+                                                    <h5 className="text-xs font-semibold text-gray-500 uppercase mb-2">Required</h5>
+                                                    <div className="space-y-2">
+                                                        <div className="flex justify-between">
+                                                            <span className="text-sm text-gray-600">Relief Load</span>
+                                                            <span className="text-sm font-medium">{W > 0 ? W.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} <span className="text-xs text-gray-400">lb/hr</span></span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-sm text-gray-600">Relief Area</span>
+                                                            <span className="text-sm font-medium">{requiredArea > 0 ? requiredArea.toFixed(4) : '-'} <span className="text-xs text-gray-400">in²</span></span>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        </div>
-                                        {ratedArea > 0 && requiredArea > 0 && (
-                                            <div className="mt-3 pt-3 border-t border-gray-200">
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-sm text-gray-600">Utilization</span>
-                                                    <span className={`text-sm font-bold ${(requiredArea / ratedArea * 100) <= 100 ? 'text-green-600' : 'text-red-600'}`}>
-                                                        {(requiredArea / ratedArea * 100).toFixed(1)}%
-                                                        {(requiredArea / ratedArea * 100) <= 100 ? ' ✓' : ' (Undersized!)'}
-                                                    </span>
+                                                <div className="bg-white rounded-lg p-3 border border-gray-200">
+                                                    <h5 className="text-xs font-semibold text-gray-500 uppercase mb-2">Rated ({selectedOrifice ? selectedOrifice.letter : '-'})</h5>
+                                                    <div className="space-y-2">
+                                                        <div className="flex justify-between">
+                                                            <span className="text-sm text-gray-600">Relief Load</span>
+                                                            <span className="text-sm font-medium">{ratedReliefLoad > 0 ? ratedReliefLoad.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} <span className="text-xs text-gray-400">lb/hr</span></span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-sm text-gray-600">Relief Area</span>
+                                                            <span className="text-sm font-medium">{ratedArea > 0 ? ratedArea.toFixed(3) : '-'} <span className="text-xs text-gray-400">in²</span></span>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        )}
+                                            {ratedArea > 0 && requiredArea > 0 && (
+                                                <div className="mt-3 pt-3 border-t border-gray-200">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-sm text-gray-600">Utilization</span>
+                                                        <span className={`text-sm font-bold ${(requiredArea / ratedArea * 100) <= 100 ? 'text-green-600' : 'text-red-600'}`}>
+                                                            {(requiredArea / ratedArea * 100).toFixed(1)}%
+                                                            {(requiredArea / ratedArea * 100) <= 100 ? ' ✓' : ' (Undersized!)'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {!selectedOrifice && (
+                                                <p className="mt-3 text-xs text-amber-600">Select a relief device size on the Device Info page to see rated values.</p>
+                                            )}
+                                        </div>
+
+                                        <p className="text-xs text-gray-500 mb-4">
+                                            This method applies for pool fire on vessel with liquid inventory causing vaporization.
+                                            Wetted surface area is the internal vessel area in contact with liquid.
+                                        </p>
+
+                                        {/* Operating Conditions Inputs */}
+                                        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+                                            <h4 className="font-medium text-green-800 mb-3">Operating Conditions (Inputs)</h4>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-sm text-gray-700">Normal Operating Pressure (P<sub>n</sub>)</span>
+                                                    <div className="flex items-center space-x-1">
+                                                        <input type="number" value={cond.normal_op_pressure}
+                                                            onChange={(e) => updateScenarioCondition('fire_wetted', 'normal_op_pressure', e.target.value)}
+                                                            className="w-20 px-3 py-1.5 bg-white border border-green-300 rounded text-sm text-right focus:outline-none focus:border-green-500" />
+                                                        <span className="text-xs text-gray-500">psig</span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-sm text-gray-700">Normal Operating Temperature (T<sub>n</sub>)</span>
+                                                    <div className="flex items-center space-x-1">
+                                                        <input type="number" value={cond.normal_op_temp}
+                                                            onChange={(e) => updateScenarioCondition('fire_wetted', 'normal_op_temp', e.target.value)}
+                                                            className="w-20 px-3 py-1.5 bg-white border border-green-300 rounded text-sm text-right focus:outline-none focus:border-green-500" />
+                                                        <span className="text-xs text-gray-500">°F</span>
+                                                    </div>
+                                                </div>
+                                                <div className="col-span-2">
+                                                    <label className="flex items-center space-x-2 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={cond.prompt_firefighting}
+                                                            onChange={(e) => updateScenarioCondition('fire_wetted', 'prompt_firefighting', e.target.checked)}
+                                                            className="w-4 h-4 text-green-600 border-gray-300 rounded"
+                                                        />
+                                                        <span className="text-sm text-gray-700">Prompt Firefighting & Adequate Drainage?</span>
+                                                        <span className="text-xs text-gray-500 ml-2">(If checked: C = 21,000. If unchecked: C = 34,500)</span>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Vessel Details with Diagram - BEFORE Latent Heat */}
+                                        <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                                            <h4 className="font-medium text-gray-700 mb-4">Vessel Details</h4>
+                                            <div className="flex gap-6">
+                                                {/* Left: Vessel Inputs */}
+                                                <div className="flex-1 space-y-3">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-sm text-gray-700">Equipment Tag</span>
+                                                        <input type="text" value={vesselDetails.equipment_tag}
+                                                            onChange={(e) => updateVesselDetail('equipment_tag', e.target.value)}
+                                                            placeholder="V-123"
+                                                            className="w-28 px-3 py-1.5 bg-green-50 border border-green-300 rounded text-sm text-right focus:outline-none focus:border-green-500" />
+                                                    </div>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-sm text-gray-700">Orientation</span>
+                                                        <select value={vesselDetails.orientation}
+                                                            onChange={(e) => updateVesselDetail('orientation', e.target.value)}
+                                                            className="w-28 px-2 py-1.5 bg-green-50 border border-green-300 rounded text-sm focus:outline-none focus:border-green-500">
+                                                            <option value="horizontal">Horizontal</option>
+                                                            <option value="vertical">Vertical</option>
+                                                        </select>
+                                                    </div>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-sm text-gray-700">Head Type</span>
+                                                        <select value={vesselDetails.head_type}
+                                                            onChange={(e) => updateVesselDetail('head_type', e.target.value)}
+                                                            className="w-36 px-2 py-1.5 bg-green-50 border border-green-300 rounded text-sm focus:outline-none focus:border-green-500">
+                                                            <option value="2:1_elliptical">2:1 ELLIPTICAL</option>
+                                                            <option value="flat">FLAT</option>
+                                                            <option value="hemispherical">HEMISPHERICAL</option>
+                                                            <option value="none">NONE</option>
+                                                        </select>
+                                                    </div>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-sm text-gray-700">Inner Diameter (ID)</span>
+                                                        <div className="flex items-center space-x-1">
+                                                            <input type="number" value={vesselDetails.inner_diameter}
+                                                                onChange={(e) => updateVesselDetail('inner_diameter', e.target.value)}
+                                                                className="w-20 px-3 py-1.5 bg-green-50 border border-green-300 rounded text-sm text-right focus:outline-none focus:border-green-500" />
+                                                            <span className="text-xs text-gray-500">in</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-sm text-gray-700">Seam-to-Seam Length</span>
+                                                        <div className="flex items-center space-x-1">
+                                                            <input type="number" value={vesselDetails.seam_to_seam}
+                                                                onChange={(e) => updateVesselDetail('seam_to_seam', e.target.value)}
+                                                                className="w-20 px-3 py-1.5 bg-green-50 border border-green-300 rounded text-sm text-right focus:outline-none focus:border-green-500" />
+                                                            <span className="text-xs text-gray-500">ft</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-sm text-gray-700">Height Above Grade</span>
+                                                        <div className="flex items-center space-x-1">
+                                                            <input type="number" value={vesselDetails.height_above_grade}
+                                                                onChange={(e) => updateVesselDetail('height_above_grade', e.target.value)}
+                                                                className="w-20 px-3 py-1.5 bg-green-50 border border-green-300 rounded text-sm text-right focus:outline-none focus:border-green-500" />
+                                                            <span className="text-xs text-gray-500">ft</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-sm text-gray-700">Max Liquid Operating Level</span>
+                                                        <div className="flex items-center space-x-1">
+                                                            <input type="number" min="0" max="100" value={cond.liquid_level}
+                                                                onChange={(e) => updateScenarioCondition('fire_wetted', 'liquid_level', e.target.value)}
+                                                                className="w-20 px-3 py-1.5 bg-green-50 border border-green-300 rounded text-sm text-right focus:outline-none focus:border-green-500" />
+                                                            <span className="text-xs text-gray-500">%</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-sm text-gray-700">Additional Area (+/-)</span>
+                                                        <div className="flex items-center space-x-1">
+                                                            <input type="number" value={vesselDetails.additional_area}
+                                                                onChange={(e) => updateVesselDetail('additional_area', e.target.value)}
+                                                                className="w-20 px-3 py-1.5 bg-green-50 border border-green-300 rounded text-sm text-right focus:outline-none focus:border-green-500" />
+                                                            <span className="text-xs text-gray-500">ft²</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Right: Vessel Diagram and Results */}
+                                                <div className="w-64 flex flex-col">
+                                                    {/* Vessel Diagram SVG */}
+                                                    <div className="bg-white border border-gray-200 rounded-lg p-3 mb-3">
+                                                        <svg viewBox="0 0 200 100" className="w-full h-24">
+                                                            {vesselDetails.orientation === 'horizontal' ? (
+                                                                <>
+                                                                    {/* Horizontal vessel shell */}
+                                                                    <rect x="40" y="20" width="120" height="60" fill="none" stroke="#374151" strokeWidth="2" rx="0"/>
+                                                                    {/* Left head */}
+                                                                    {vesselDetails.head_type === '2:1_elliptical' && (
+                                                                        <ellipse cx="40" cy="50" rx="12" ry="30" fill="none" stroke="#374151" strokeWidth="2"/>
+                                                                    )}
+                                                                    {vesselDetails.head_type === 'hemispherical' && (
+                                                                        <path d="M 40 20 A 30 30 0 0 0 40 80" fill="none" stroke="#374151" strokeWidth="2"/>
+                                                                    )}
+                                                                    {vesselDetails.head_type === 'flat' && (
+                                                                        <line x1="40" y1="20" x2="40" y2="80" stroke="#374151" strokeWidth="2"/>
+                                                                    )}
+                                                                    {/* Right head */}
+                                                                    {vesselDetails.head_type === '2:1_elliptical' && (
+                                                                        <ellipse cx="160" cy="50" rx="12" ry="30" fill="none" stroke="#374151" strokeWidth="2"/>
+                                                                    )}
+                                                                    {vesselDetails.head_type === 'hemispherical' && (
+                                                                        <path d="M 160 20 A 30 30 0 0 1 160 80" fill="none" stroke="#374151" strokeWidth="2"/>
+                                                                    )}
+                                                                    {vesselDetails.head_type === 'flat' && (
+                                                                        <line x1="160" y1="20" x2="160" y2="80" stroke="#374151" strokeWidth="2"/>
+                                                                    )}
+                                                                    {/* Liquid level fill */}
+                                                                    {cond.liquid_level > 0 && (
+                                                                        <rect x="40" y={80 - (cond.liquid_level / 100) * 60} width="120" height={(cond.liquid_level / 100) * 60} fill="#3B82F6" fillOpacity="0.3"/>
+                                                                    )}
+                                                                    <text x="100" y="55" textAnchor="middle" className="text-xs" fill="#6b7280">{cond.liquid_level}% Liquid</text>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    {/* Vertical vessel shell */}
+                                                                    <rect x="70" y="15" width="60" height="65" fill="none" stroke="#374151" strokeWidth="2"/>
+                                                                    {/* Top head */}
+                                                                    {vesselDetails.head_type === '2:1_elliptical' && (
+                                                                        <ellipse cx="100" cy="15" rx="30" ry="10" fill="none" stroke="#374151" strokeWidth="2"/>
+                                                                    )}
+                                                                    {vesselDetails.head_type === 'hemispherical' && (
+                                                                        <path d="M 70 15 A 30 30 0 0 1 130 15" fill="none" stroke="#374151" strokeWidth="2"/>
+                                                                    )}
+                                                                    {vesselDetails.head_type === 'flat' && (
+                                                                        <line x1="70" y1="15" x2="130" y2="15" stroke="#374151" strokeWidth="2"/>
+                                                                    )}
+                                                                    {/* Bottom head */}
+                                                                    {vesselDetails.head_type === '2:1_elliptical' && (
+                                                                        <ellipse cx="100" cy="80" rx="30" ry="10" fill="none" stroke="#374151" strokeWidth="2"/>
+                                                                    )}
+                                                                    {vesselDetails.head_type === 'hemispherical' && (
+                                                                        <path d="M 70 80 A 30 30 0 0 0 130 80" fill="none" stroke="#374151" strokeWidth="2"/>
+                                                                    )}
+                                                                    {vesselDetails.head_type === 'flat' && (
+                                                                        <line x1="70" y1="80" x2="130" y2="80" stroke="#374151" strokeWidth="2"/>
+                                                                    )}
+                                                                    {/* Liquid level fill */}
+                                                                    {cond.liquid_level > 0 && (
+                                                                        <rect x="70" y={80 - (cond.liquid_level / 100) * 65} width="60" height={(cond.liquid_level / 100) * 65} fill="#3B82F6" fillOpacity="0.3"/>
+                                                                    )}
+                                                                    <text x="100" y="50" textAnchor="middle" className="text-xs" fill="#6b7280">{cond.liquid_level}%</text>
+                                                                </>
+                                                            )}
+                                                        </svg>
+                                                    </div>
+
+                                                    {/* Volume Results */}
+                                                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
+                                                        <div className="flex justify-between mb-2">
+                                                            <span className="text-gray-600">Filled Volume</span>
+                                                            <span className="font-medium">{filledVolume_gal > 0 ? filledVolume_gal.toFixed(1) : '0'} <span className="text-xs text-gray-500">US gal</span></span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Total Volume</span>
+                                                            <span className="font-medium">{wettedVesselAreas.volume_gal > 0 ? wettedVesselAreas.volume_gal.toFixed(1) : '-'} <span className="text-xs text-gray-500">US gal</span></span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Calculated Parameters Display */}
+                                        <div className="space-y-2">
+                                            {/* Relief Device Set Pressure - Display */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Relief Device Set Pressure</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{setP || '-'}</span>
+                                                    <span className="text-xs text-gray-500 w-12">psig</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Allowable Overpressure - Display */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Allowable Overpressure</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">21%</span>
+                                                    <span className="text-xs text-gray-500 w-12"></span>
+                                                </div>
+                                            </div>
+
+                                            {/* Relieving Pressure - Display (in psig) */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Relieving Pressure (P₁)</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{p1_psig > 0 ? p1_psig.toFixed(1) : '-'}</span>
+                                                    <span className="text-xs text-gray-500 w-12">psig</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Critical Pressure - Display */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Critical Pressure (P<sub>CRIT</sub>)</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{Pcrit > 0 ? Pcrit.toFixed(0) : '-'}</span>
+                                                    <span className="text-xs text-gray-500 w-12">psia</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Fluid Type - Display */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Fluid Type</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{isMultiComponent ? 'MULTI-COMPONENT' : 'SINGLE'}</span>
+                                                    <span className="text-xs text-gray-500 w-12"></span>
+                                                </div>
+                                            </div>
+
+                                            {/* Molecular Weight - Display */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Molecular Weight (M)</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{M > 0 ? M.toFixed(2) : '-'}</span>
+                                                    <span className="text-xs text-gray-500 w-12">lb/lbmol</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Insulation Status - Display */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Insulation Status</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">Uninsulated</span>
+                                                    <span className="text-xs text-gray-500 w-12"></span>
+                                                </div>
+                                            </div>
+
+                                            {/* Environment Factor - Display */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Environment Factor (F)</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{F.toFixed(2)}</span>
+                                                    <span className="text-xs text-gray-500 w-12"></span>
+                                                </div>
+                                            </div>
+
+                                            {/* Wetted Surface Area from Vessel Geometry */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100 bg-blue-50 -mx-2 px-2 rounded">
+                                                <span className="text-sm font-medium text-gray-700">Wetted Surface Area (A<sub>ws</sub>)</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <span className="text-sm font-bold text-blue-700 w-24 text-right">{wettedArea > 0 ? wettedArea.toFixed(1) : '-'}</span>
+                                                    <span className="text-xs text-gray-500 w-12">ft²</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Heat Absorption Constant - Display */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Heat Absorption Constant (C)</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{heatAbsorptionConstant.toLocaleString()}</span>
+                                                    <span className="text-xs text-gray-500 w-12"></span>
+                                                </div>
+                                            </div>
+
+                                            {/* Heat Absorption - Display (highlighted) */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100 bg-orange-50 -mx-2 px-2 rounded">
+                                                <span className="text-sm font-medium text-gray-700">Total Heat Absorption (Q = C × F × A<sup>0.82</sup>)</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <span className="text-sm font-bold text-orange-700 w-24 text-right">{Q > 0 ? Q.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'}</span>
+                                                    <span className="text-xs text-gray-500 w-12">Btu/hr</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Latent Heat - Display (calculated) */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Latent Heat of Vaporization (λ) - from composition</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{latentHeat > 0 ? latentHeat.toFixed(1) : '-'}</span>
+                                                    <span className="text-xs text-gray-500 w-12">Btu/lb</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Relieving Temperature - Display */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Relieving Temperature (T₁)</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{T_bubble > 0 ? T_bubble.toFixed(0) : '-'}</span>
+                                                    <span className="text-xs text-gray-500 w-12">°F</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Relief Load - Display (highlighted) */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100 bg-red-50 -mx-2 px-2 rounded">
+                                                <span className="text-sm font-medium text-gray-700">Relief Load (W = Q / λ)</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <span className="text-sm font-bold text-red-700 w-24 text-right">{W > 0 ? W.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'}</span>
+                                                    <span className="text-xs text-gray-500 w-12">lb/hr</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Calculation Inputs Summary for Verification */}
+                                        <div className="mt-6 bg-gray-100 rounded-lg p-4">
+                                            <h4 className="font-medium text-gray-700 mb-3">Calculation Inputs (for verification)</h4>
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs font-mono">
+                                                <div>Set P = {setP} psig</div>
+                                                <div>Overpressure = 21%</div>
+                                                <div>P₁ = {p1_psig.toFixed(2)} psig</div>
+                                                <div>P₁ = {p1_psia.toFixed(2)} psia</div>
+                                                <div>M = {M.toFixed(3)} lb/lbmol</div>
+                                                <div>k = {k.toFixed(4)}</div>
+                                                <div>C (API 520) = {C.toFixed(2)}</div>
+                                                <div>A_wet = {wettedArea.toFixed(2)} ft²</div>
+                                                <div>C_heat = {heatAbsorptionConstant}</div>
+                                                <div>F = {F.toFixed(2)}</div>
+                                                <div>Q = {Q.toFixed(0)} Btu/hr</div>
+                                                <div>λ = {latentHeat.toFixed(1)} Btu/lb</div>
+                                                <div>W = {W.toFixed(1)} lb/hr</div>
+                                                <div>T₁ = {T_bubble.toFixed(1)} °F</div>
+                                                <div>T₁ = {T1_R.toFixed(2)} °R</div>
+                                                <div>Z = {Z.toFixed(2)}</div>
+                                                <div>Kd = {Kd}</div>
+                                                <div>Kb = {Kb}</div>
+                                                <div>Kc = {Kc}</div>
+                                                <div>A_req = {requiredArea.toFixed(6)} in²</div>
+                                            </div>
+                                        </div>
                                     </div>
-
-                                    {/* Latent Heat Calculation Parameters */}
-                                    <div className="mb-6">
-                                        <h4 className="font-medium text-gray-700 mb-3">Latent Heat Calculation</h4>
-                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 bg-blue-50 rounded-lg p-4">
-                                            <div>
-                                                <p className="text-xs text-gray-500">Ambient Pressure</p>
-                                                <p className="font-semibold">14.69 <span className="text-xs text-gray-400">psia</span></p>
-                                            </div>
-                                            <div>
-                                                <p className="text-xs text-gray-500">Relieving Pressure (P<sub>1</sub>)</p>
-                                                <p className="font-semibold">{p1_psia.toFixed(1)} <span className="text-xs text-gray-400">psia</span></p>
-                                            </div>
-                                            <div>
-                                                <p className="text-xs text-gray-500">Critical Pressure (P<sub>crit</sub>)</p>
-                                                <p className="font-semibold">{Pcrit > 0 ? Pcrit.toFixed(0) : '—'} <span className="text-xs text-gray-400">psia</span></p>
-                                            </div>
-                                            <div>
-                                                <p className="text-xs text-gray-500">Fluid Type</p>
-                                                <p className="font-semibold">{isMultiComponent ? 'MULTI-COMPONENT' : 'SINGLE'}</p>
-                                            </div>
-                                        </div>
-                                        <div className="mt-2 grid grid-cols-2 gap-4 bg-blue-50 rounded-lg p-4">
-                                            <div>
-                                                <p className="text-xs text-gray-500">Allowable Overpressure</p>
-                                                <p className="font-semibold">21%</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-xs text-gray-500">Molecular Weight</p>
-                                                <p className="font-semibold">{M > 0 ? M.toFixed(2) : '—'} <span className="text-xs text-gray-400">lb/lbmol</span></p>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Heat Exchanger Diagram */}
-                                    <div className="mb-6 flex justify-center">
-                                        <svg width="300" height="100" viewBox="0 0 300 100">
-                                            {/* Stream A arrow */}
-                                            <line x1="20" y1="50" x2="100" y2="50" stroke="#3B82F6" strokeWidth="2" markerEnd="url(#arrowBlue)"/>
-                                            <text x="60" y="35" textAnchor="middle" className="text-xs" fill="#3B82F6">Stream A</text>
-
-                                            {/* Heat exchanger circle */}
-                                            <circle cx="150" cy="50" r="35" fill="#FEE2E2" stroke="#DC2626" strokeWidth="2"/>
-                                            <path d="M130 40 Q140 50 130 60 Q140 50 150 60 Q160 50 170 60 Q160 50 170 40" fill="none" stroke="#DC2626" strokeWidth="2"/>
-                                            <text x="150" y="90" textAnchor="middle" className="text-xs" fill="#DC2626">Heat Input</text>
-
-                                            {/* Stream B arrow */}
-                                            <line x1="200" y1="50" x2="280" y2="50" stroke="#10B981" strokeWidth="2" markerEnd="url(#arrowGreen)"/>
-                                            <text x="240" y="35" textAnchor="middle" className="text-xs" fill="#10B981">Stream B</text>
-
-                                            {/* Arrow markers */}
-                                            <defs>
-                                                <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
-                                                    <path d="M0,0 L0,6 L9,3 z" fill="#3B82F6"/>
-                                                </marker>
-                                                <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
-                                                    <path d="M0,0 L0,6 L9,3 z" fill="#10B981"/>
-                                                </marker>
-                                            </defs>
-                                        </svg>
-                                    </div>
-
-                                    {/* Stream A & B Properties */}
-                                    <div className="grid grid-cols-2 gap-4 mb-6">
-                                        {/* Stream A */}
-                                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                                            <h5 className="font-medium text-blue-800 mb-3">Stream A Properties (Liquid)</h5>
-                                            <div className="space-y-2 text-sm">
-                                                <div className="flex justify-between">
-                                                    <span className="text-gray-600">Vapor Fraction</span>
-                                                    <span className="font-medium">0.00</span>
-                                                </div>
-                                                <div className="flex justify-between">
-                                                    <span className="text-gray-600">Pressure</span>
-                                                    <span className="font-medium">{p1_psia.toFixed(0)} psia</span>
-                                                </div>
-                                                <div className="flex justify-between">
-                                                    <span className="text-gray-600">Temperature (Bubble Pt)</span>
-                                                    <span className="font-medium">{T_bubble.toFixed(1)} °F</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        {/* Stream B */}
-                                        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                                            <h5 className="font-medium text-green-800 mb-3">Stream B Properties (5% Vaporized)</h5>
-                                            <div className="space-y-2 text-sm">
-                                                <div className="flex justify-between">
-                                                    <span className="text-gray-600">Vapor Fraction</span>
-                                                    <span className="font-medium">0.05</span>
-                                                </div>
-                                                <div className="flex justify-between">
-                                                    <span className="text-gray-600">Pressure</span>
-                                                    <span className="font-medium">{p1_psia.toFixed(0)} psia</span>
-                                                </div>
-                                                <div className="flex justify-between">
-                                                    <span className="text-gray-600">Mass Vaporized</span>
-                                                    <span className="font-medium">{streamB_massVaporized.toFixed(0)} lb/hr</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Vessel Details for Fire Wetted */}
-                                    <div className="mb-6 bg-orange-50 border border-orange-200 rounded-lg p-4">
-                                        <h4 className="font-medium text-orange-800 mb-3">Vessel Details (Fire Wetted)</h4>
-                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                                            <div>
-                                                <p className="text-xs text-gray-500">Orientation</p>
-                                                <p className="font-semibold capitalize">{vesselDetails.orientation}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-xs text-gray-500">Inner Diameter</p>
-                                                <p className="font-semibold">{vesselDetails.inner_diameter} in</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-xs text-gray-500">Length/Height</p>
-                                                <p className="font-semibold">{vesselDetails.seam_to_seam} ft</p>
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs text-gray-500 mb-1">Liquid Level (%)</label>
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    max="100"
-                                                    value={cond.liquid_level}
-                                                    onChange={(e) => updateScenarioCondition('fire_wetted', 'liquid_level', e.target.value)}
-                                                    className="w-full px-2 py-1 border border-orange-300 rounded text-sm focus:outline-none focus:border-orange-500"
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="mt-3 pt-3 border-t border-orange-200">
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-sm text-gray-600">Wetted Surface Area (A<sub>ws</sub>)</span>
-                                                <span className="text-lg font-bold text-orange-700">{wettedArea.toFixed(1)} ft²</span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Heat Absorption Inputs */}
-                                    <div className="mb-6">
-                                        <h4 className="font-medium text-gray-700 mb-3">Required Relieving Rate Calculation</h4>
-                                        <div className="grid grid-cols-2 gap-4 bg-green-50 border border-green-200 rounded-lg p-4">
-                                            <div>
-                                                <label className="flex items-center space-x-2 cursor-pointer">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={cond.prompt_firefighting}
-                                                        onChange={(e) => updateScenarioCondition('fire_wetted', 'prompt_firefighting', e.target.checked)}
-                                                        className="w-4 h-4 text-green-600 border-gray-300 rounded"
-                                                    />
-                                                    <span className="text-sm text-gray-700">Prompt Firefighting & Drainage?</span>
-                                                </label>
-                                                <p className="text-xs text-gray-500 mt-1">If yes, C₂ = 34,500. If no, C₁ = 21,000</p>
-                                            </div>
-                                            <div>
-                                                <label className="flex items-center space-x-2 cursor-pointer">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={cond.is_insulated}
-                                                        onChange={(e) => updateScenarioCondition('fire_wetted', 'is_insulated', e.target.checked)}
-                                                        className="w-4 h-4 text-green-600 border-gray-300 rounded"
-                                                    />
-                                                    <span className="text-sm text-gray-700">Vessel Insulated?</span>
-                                                </label>
-                                                <p className="text-xs text-gray-500 mt-1">Affects environment factor F</p>
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs text-gray-500 mb-1">Latent Heat of Vaporization (λ)</label>
-                                                <div className="flex items-center">
-                                                    <input
-                                                        type="number"
-                                                        value={cond.latent_heat}
-                                                        onChange={(e) => updateScenarioCondition('fire_wetted', 'latent_heat', e.target.value)}
-                                                        className="w-full px-2 py-1 border border-green-300 rounded text-sm focus:outline-none focus:border-green-500"
-                                                    />
-                                                    <span className="ml-2 text-xs text-gray-500">Btu/lb</span>
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <p className="text-xs text-gray-500">Heat Absorption Constant</p>
-                                                <p className="font-semibold">{cond.prompt_firefighting ? 'C₂ = 34,500' : 'C₁ = 21,000'}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Calculated Results */}
-                                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                                        <h4 className="font-medium text-red-800 mb-3">Heat Absorption & Relief Load</h4>
-                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                                            <div>
-                                                <p className="text-xs text-gray-500">Environment Factor (F)</p>
-                                                <p className="font-semibold text-red-700">{F.toFixed(2)}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-xs text-gray-500">Wetted Area (A)</p>
-                                                <p className="font-semibold text-red-700">{wettedArea.toFixed(1)} ft²</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-xs text-gray-500">Total Heat Absorption (Q)</p>
-                                                <p className="font-semibold text-red-700">{Q > 0 ? Q.toLocaleString(undefined, {maximumFractionDigits: 0}) : '—'} Btu/hr</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-xs text-gray-500">Relief Load (W)</p>
-                                                <p className="font-semibold text-red-700">{W > 0 ? W.toLocaleString(undefined, {maximumFractionDigits: 0}) : '—'} lb/hr</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
                                 );
                             })()}
 
