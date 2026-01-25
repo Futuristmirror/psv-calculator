@@ -1829,19 +1829,39 @@
                         doc.setFont('helvetica', 'normal');
                         doc.setFontSize(7);
 
+                        // Determine if this is the controlling scenario
+                        const isControlling = scenId === results.controllingScenario;
+
+                        // Determine row background color based on new logic:
+                        // - Not Calculated: dark gray (200, 200, 200)
+                        // - Credible (YES) + applicable: green (198, 239, 206)
+                        // - Credible (YES/SEE COMMENTS) + not applicable: light red (255, 199, 206)
+                        // - Not credible (NO): light gray (230, 230, 230)
+                        let rowBgColor;
+                        if (isNotCalculated) {
+                            rowBgColor = [200, 200, 200]; // Dark gray for not calculated
+                        } else if (credible === 'YES' && sr?.applicable) {
+                            rowBgColor = [198, 239, 206]; // Green - credible and passing
+                        } else if ((credible === 'YES' || credible === 'SEE COMMENTS') && !sr?.applicable) {
+                            rowBgColor = [255, 199, 206]; // Light red - credible but not passing
+                        } else {
+                            rowBgColor = [230, 230, 230]; // Light gray - not credible
+                        }
+
                         if (isNotCalculated) {
                             // "Not Calculated" scenarios - gray row with merged cells
                             // Credible cell
-                            doc.setFillColor(200, 200, 200);
-                            doc.setTextColor(100, 100, 100);
+                            doc.setFillColor(...rowBgColor);
+                            doc.setTextColor(80, 80, 80); // Darker text for readability
                             doc.rect(colX, yPos, colWidths[0], scenarioRowH, 'F');
                             doc.rect(colX, yPos, colWidths[0], scenarioRowH);
                             doc.text(credible, colX + colWidths[0]/2, yPos + scenarioRowH/2 + 1.5, { align: 'center' });
                             colX += colWidths[0];
 
-                            // Scenario name cell
+                            // Scenario name cell - keep visible with readable text
                             doc.rect(colX, yPos, colWidths[1], scenarioRowH, 'F');
                             doc.rect(colX, yPos, colWidths[1], scenarioRowH);
+                            doc.setFont('helvetica', 'normal');
                             doc.text(scenarioNameWithId, colX + colWidths[1]/2, yPos + scenarioRowH/2 + 1.5, { align: 'center' });
                             colX += colWidths[1];
 
@@ -1865,18 +1885,18 @@
                             ];
 
                             rowData.forEach((cell, i) => {
+                                // Credible column gets special coloring
                                 if (i === 0) {
                                     if (cell === 'YES') {
-                                        doc.setFillColor(198, 239, 206);
+                                        doc.setFillColor(198, 239, 206); // Green for credible
                                     } else if (cell === 'SEE COMMENTS') {
-                                        doc.setFillColor(255, 235, 156);
+                                        doc.setFillColor(255, 235, 156); // Yellow for see comments
                                     } else {
-                                        doc.setFillColor(255, 199, 206);
+                                        doc.setFillColor(255, 199, 206); // Light red for not credible
                                     }
-                                } else if (sr?.applicable) {
-                                    doc.setFillColor(198, 239, 206);
                                 } else {
-                                    doc.setFillColor(230, 230, 230);
+                                    // Other columns use row background color
+                                    doc.setFillColor(...rowBgColor);
                                 }
 
                                 doc.rect(colX, yPos, colWidths[i], scenarioRowH, 'F');
@@ -1886,10 +1906,19 @@
                             });
                         }
 
+                        // Draw double bold border for controlling scenario
+                        if (isControlling) {
+                            const totalRowWidth = colWidths.reduce((a, b) => a + b, 0);
+                            doc.setLineWidth(1.2); // Thicker line for emphasis
+                            doc.setDrawColor(0, 0, 0);
+                            doc.rect(margin, yPos, totalRowWidth, scenarioRowH);
+                            doc.setLineWidth(0.3); // Reset line width
+                        }
+
                         yPos += scenarioRowH;
                     });
 
-                    yPos += 8;
+                    yPos += 4;
 
                     // Design Scenario Summary
                     doc.setFillColor(230, 230, 230);
@@ -2137,30 +2166,32 @@
                             // Build calculation details based on scenario type - matching online calc layout
                             const cond = scenarioConditions[scenId] || {};
 
-                            // Operating Conditions section (common to most scenarios)
-                            checkNewPage(30);
-                            doc.setFont('helvetica', 'bold');
-                            doc.setFontSize(8);
-                            doc.setFillColor(220, 255, 220);
-                            doc.rect(margin, yPos, pageWidth - 2*margin, 6, 'F');
-                            doc.rect(margin, yPos, pageWidth - 2*margin, 6);
-                            doc.text('Operating Conditions (Inputs)', margin + 2, yPos + 4);
-                            yPos += 8;
+                            // Operating Conditions section (common to most scenarios except CV Failure)
+                            if (scenId !== 'cv_failure') {
+                                checkNewPage(30);
+                                doc.setFont('helvetica', 'bold');
+                                doc.setFontSize(8);
+                                doc.setFillColor(220, 255, 220);
+                                doc.rect(margin, yPos, pageWidth - 2*margin, 6, 'F');
+                                doc.rect(margin, yPos, pageWidth - 2*margin, 6);
+                                doc.text('Operating Conditions (Inputs)', margin + 2, yPos + 4);
+                                yPos += 8;
 
-                            const opConditions = [
-                                ['Normal Operating Pressure (Pn)', `${cond.normal_op_pressure || '-'} psig`],
-                                ['Normal Operating Temperature (Tn)', `${cond.normal_op_temp || '-'} °F`]
-                            ];
-                            doc.autoTable({
-                                startY: yPos,
-                                body: opConditions,
-                                theme: 'plain',
-                                bodyStyles: { fontSize: 8 },
-                                columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 50, halign: 'right' } },
-                                margin: { left: margin, right: margin },
-                                tableWidth: 130
-                            });
-                            yPos = doc.lastAutoTable.finalY + 5;
+                                const opConditions = [
+                                    ['Normal Operating Pressure (Pn)', `${cond.normal_op_pressure || '-'} psig`],
+                                    ['Normal Operating Temperature (Tn)', `${cond.normal_op_temp || '-'} °F`]
+                                ];
+                                doc.autoTable({
+                                    startY: yPos,
+                                    body: opConditions,
+                                    theme: 'plain',
+                                    bodyStyles: { fontSize: 8 },
+                                    columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 50, halign: 'right' } },
+                                    margin: { left: margin, right: margin },
+                                    tableWidth: 130
+                                });
+                                yPos = doc.lastAutoTable.finalY + 5;
+                            }
 
                             // Vessel Details section (for fire scenarios)
                             if (scenId === 'fire_wetted' || scenId === 'fire_unwetted') {
