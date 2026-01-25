@@ -1569,7 +1569,7 @@
                         blocked_vapor: { id: '2A', name: 'Blocked Outlet', fullName: '2A - Blocked Outlet - Vapor' },
                         overfilling: { id: '2B', name: 'Overfilling', fullName: '2B - Overfilling', notCalculated: true },
                         cv_failure: { id: '3', name: 'CV Failure', fullName: '3 - CV Failure - Vapor' },
-                        hydraulic_thermal: { id: '4', name: 'Hydraulic Expansion', fullName: '4 - Hydraulic Thermal Expansion' },
+                        hydraulic_thermal: { id: '4', name: 'Hydraulic Expansion', fullName: '4 - Hydraulic Thermal Expansion', notCalculated: true },
                         loss_of_cooling: { id: '5', name: 'Loss of Cooling', fullName: '5 - Loss of Cooling', notCalculated: true },
                         abnormal_heat: { id: '6', name: 'Abnormal Heat Input', fullName: '6 - Abnormal Heat Input', notCalculated: true },
                         tube_rupture: { id: '7', name: 'Exchanger Tube Rupture', fullName: '7 - Exchanger Tube Rupture', notCalculated: true },
@@ -1846,7 +1846,10 @@
                         const isNotCalculated = def?.notCalculated;
 
                         let credible = 'NO';
-                        if (isNotCalculated) {
+                        if (scenId === 'hydraulic_thermal') {
+                            // Hydraulic Thermal Expansion shows YES/NO based on user selection
+                            credible = sel?.applicable ? 'YES' : 'NO';
+                        } else if (isNotCalculated) {
                             credible = 'Unknown';
                         } else if (sel?.applicable && sr?.applicable) {
                             credible = 'YES';
@@ -1865,13 +1868,15 @@
                         const isControlling = scenId === results.controllingScenario;
 
                         // Determine row background color based on new logic:
-                        // - Not Calculated (Unknown): solid darker gray
+                        // - Not Calculated (Unknown): solid darker gray (except hydraulic_thermal)
                         // - Credible (YES) + Adequate (required < API): light green
                         // - Credible (YES) + Not Adequate (required >= API): light red
                         // - Not credible (NO): light blue-gray for distinction
                         let rowBgColor;
                         const scenarioUndersized = sr?.applicable && sr.requiredArea > (selectedOrifice?.area || 0);
-                        if (isNotCalculated) {
+                        // Hydraulic thermal is shown as regular row (not grayed out), but with no flow/area values
+                        const showAsNotCalculated = isNotCalculated && scenId !== 'hydraulic_thermal';
+                        if (showAsNotCalculated) {
                             rowBgColor = [200, 200, 200]; // Darker gray for Unknown/Not Calculated
                         } else if (credible === 'YES' || credible === 'SEE COMMENTS') {
                             // Check if the scenario is adequate (required area < API orifice area)
@@ -1884,7 +1889,7 @@
                             rowBgColor = [220, 230, 240]; // Light blue-gray - not credible (NO)
                         }
 
-                        if (isNotCalculated) {
+                        if (showAsNotCalculated) {
                             // "Not Calculated" scenarios - solid darker gray (no hatch)
                             // Credible cell - darker gray background
                             doc.setFillColor(200, 200, 200);
@@ -2026,7 +2031,14 @@
 
                         // Use the notes from the text box or default text
                         let notes;
-                        if (isNotCalculated) {
+                        if (scenId === 'hydraulic_thermal') {
+                            // Special handling for Hydraulic Thermal Expansion
+                            if (sel?.applicable) {
+                                notes = sel?.notes || `Per API 521 4.4.12.2, the required relieving rate due to thermal expansion is minimal and difficult to calculate. Because of this, the required relieving rate is generally not calculated when the protected system meets one of the criteria described below, as detailed in API 521 4.4.12.3:\n\n1. The protected system consists of long, aboveground, uninsulated pipelines of large diameter.\n2. The protected system includes large vessels or exchangers operating liquid full.\n\nBecause the two cases above do not apply, a detailed analysis has not been performed.`;
+                            } else {
+                                notes = sel?.notes || `The system is not expected to operate liquid-full or has a different applicable scenario.`;
+                            }
+                        } else if (isNotCalculated) {
                             notes = `This scenario is not analyzed in this calculator. If applicable to your system, consult with a process engineer for proper evaluation.`;
                         } else {
                             notes = sel?.notes || `No notes provided for ${def?.name || scenId}.`;
@@ -2038,7 +2050,10 @@
                         checkNewPage(boxH + 15);
 
                         let credible = 'NO';
-                        if (isNotCalculated) {
+                        if (scenId === 'hydraulic_thermal') {
+                            // Hydraulic Thermal Expansion shows YES/NO based on user selection
+                            credible = sel?.applicable ? 'YES' : 'NO';
+                        } else if (isNotCalculated) {
                             credible = 'Unknown';
                         } else if (sel?.applicable && sr?.applicable) {
                             credible = 'YES';
@@ -2049,7 +2064,9 @@
                         // Include scenario ID in header
                         doc.setFont('helvetica', 'bolditalic');
                         doc.setFontSize(9);
-                        if (isNotCalculated) {
+                        // Hydraulic thermal shows normal styling (not grayed out like other notCalculated scenarios)
+                        const isGrayedOut = isNotCalculated && scenId !== 'hydraulic_thermal';
+                        if (isGrayedOut) {
                             doc.setTextColor(100, 100, 100);
                         } else {
                             doc.setTextColor(0, 0, 0);
@@ -2060,13 +2077,13 @@
 
                         yPos += 4;
 
-                        if (isNotCalculated) {
+                        if (isGrayedOut) {
                             doc.setFillColor(240, 240, 240);
                             doc.rect(margin, yPos, pageWidth - 2*margin, boxH, 'F');
                         }
                         doc.rect(margin, yPos, pageWidth - 2*margin, boxH);
                         doc.setFontSize(8);
-                        if (isNotCalculated) {
+                        if (isGrayedOut) {
                             doc.setTextColor(100, 100, 100);
                             doc.setFont('helvetica', 'italic');
                         } else {
@@ -2099,8 +2116,10 @@
                         const def = SCENARIO_DEFS[scenId];
                         const sr = results.scenarioResults?.[scenId];
                         const comp = compositions[scenId] || {};
+                        const isNotCalculated = def?.notCalculated;
 
-                        if (!sel?.applicable) return;
+                        // Skip non-applicable scenarios and notCalculated scenarios (they have no calculation details)
+                        if (!sel?.applicable || isNotCalculated) return;
 
                         checkNewPage(100);
 
