@@ -1866,14 +1866,20 @@
 
                         // Determine row background color based on new logic:
                         // - Not Calculated (Unknown): solid darker gray
-                        // - Credible (YES): light red (255, 199, 206) - all credible scenarios are red
+                        // - Credible (YES) + Adequate (required < API): light green
+                        // - Credible (YES) + Not Adequate (required >= API): light red
                         // - Not credible (NO): light blue-gray for distinction
                         let rowBgColor;
                         const scenarioUndersized = sr?.applicable && sr.requiredArea > (selectedOrifice?.area || 0);
                         if (isNotCalculated) {
                             rowBgColor = [200, 200, 200]; // Darker gray for Unknown/Not Calculated
                         } else if (credible === 'YES' || credible === 'SEE COMMENTS') {
-                            rowBgColor = [255, 199, 206]; // Light red - all credible scenarios are red
+                            // Check if the scenario is adequate (required area < API orifice area)
+                            if (scenarioUndersized) {
+                                rowBgColor = [255, 199, 206]; // Light red - credible but NOT adequate
+                            } else {
+                                rowBgColor = [198, 239, 206]; // Light green - credible AND adequate
+                            }
                         } else {
                             rowBgColor = [220, 230, 240]; // Light blue-gray - not credible (NO)
                         }
@@ -1919,7 +1925,7 @@
 
                             rowData.forEach((cell, i) => {
                                 // All cells use the row background color consistently
-                                // Credible (YES/SEE COMMENTS) = red, Not credible (NO) = light blue-gray
+                                // Credible + Adequate = green, Credible + Not Adequate = red, Not credible (NO) = light blue-gray
                                 doc.setFillColor(...rowBgColor);
 
                                 doc.rect(colX, yPos, colWidths[i], scenarioRowH, 'F');
