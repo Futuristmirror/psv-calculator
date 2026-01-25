@@ -1485,7 +1485,7 @@
                     const margin = 15;
                     let yPos = margin;
 
-                    // Scenario definitions with full names
+                    // Scenario definitions with full names and IDs
                     const SCENARIO_DEFS = {
                         fire_wetted: { id: '1A', name: 'Fire - Wetted', fullName: '1A - Fire-Wetted (Liquid Boil up)' },
                         fire_unwetted: { id: '1B', name: 'Fire - Unwetted', fullName: '1B - Fire-Unwetted (Vapor)' },
@@ -1495,6 +1495,12 @@
                     };
 
                     const controllingDef = SCENARIO_DEFS[results.controllingScenario] || { name: results.controllingScenario };
+
+                    // Helper function to format numbers with commas
+                    const formatNumber = (num, decimals = 0) => {
+                        if (num === undefined || num === null || isNaN(num)) return '-';
+                        return num.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+                    };
 
                     // Helper functions
                     const checkNewPage = (requiredSpace = 30) => {
@@ -1522,6 +1528,10 @@
                         doc.text(text, x + 2, y + h/2 + 2);
                     };
 
+                    // Get valve pipe sizes from selected orifice
+                    const selectedOrifice = ORIFICES.find(o => o.size === deviceInfo.selected_orifice) || results.selectedOrifice;
+                    const valvePipeSize = selectedOrifice ? `${selectedOrifice.inlet} x ${selectedOrifice.outlet}` : '-';
+
                     // ========== PAGE 1: COVER PAGE ==========
                     // Title box
                     doc.setFillColor(200, 220, 240);
@@ -1541,7 +1551,6 @@
                     doc.setFontSize(10);
                     doc.setFont('helvetica', 'bold');
 
-                    // Draw revision table header
                     const revTableY = yPos;
                     const col1W = 30, col2W = 30, col3W = pageWidth - 2*margin - 60;
 
@@ -1549,7 +1558,6 @@
                     drawHeaderCell(margin + col1W, revTableY, col2W, 10, 'DATE');
                     drawHeaderCell(margin + col1W + col2W, revTableY, col3W, 10, 'DESCRIPTION OF CHANGE');
 
-                    // Draw revision rows
                     let rowY = revTableY + 10;
                     const rowH = 15;
 
@@ -1570,7 +1578,7 @@
                         rowY += rowH;
                     });
 
-                    // Add empty rows for future revisions
+                    // Empty rows for future revisions
                     for (let i = reportInfo.revision_history.length; i < 7; i++) {
                         doc.rect(margin, rowY, col1W, rowH);
                         doc.rect(margin + col1W, rowY, col2W, rowH);
@@ -1578,20 +1586,17 @@
                         rowY += rowH;
                     }
 
-                    // Franc Engineering logo area at bottom
-                    doc.setFontSize(16);
-                    doc.setFont('helvetica', 'bold');
-                    doc.setTextColor(30, 58, 95);
-                    // Draw triangle logo approximation
-                    doc.setFillColor(30, 58, 95);
-                    doc.triangle(pageWidth/2 - 60, pageHeight - 50, pageWidth/2 - 40, pageHeight - 70, pageWidth/2 - 20, pageHeight - 50, 'F');
-                    doc.text('FRANC ENGINEERING', pageWidth/2 - 10, pageHeight - 55);
+                    // Small Franc Engineering at bottom
+                    doc.setFontSize(10);
+                    doc.setFont('helvetica', 'normal');
+                    doc.setTextColor(100, 100, 100);
+                    doc.text('Franc Engineering | franceng.com', pageWidth / 2, pageHeight - 20, { align: 'center' });
 
                     // ========== PAGE 2: RELIEF DEVICE SIZING SUMMARY ==========
                     doc.addPage();
                     yPos = margin;
 
-                    // Header with title and device info
+                    // Header
                     doc.setFillColor(230, 230, 230);
                     doc.rect(margin, yPos, pageWidth - 2*margin, 18, 'F');
                     doc.setDrawColor(0, 0, 0);
@@ -1611,40 +1616,7 @@
                     doc.text(deviceInfo.tag || '-', pageWidth - 40, yPos + 6);
                     doc.text(deviceInfo.pid_number || '-', pageWidth - 40, yPos + 12);
 
-                    yPos += 25;
-
-                    // Client info section (left) and Engineer info (right)
-                    doc.setFontSize(9);
-                    const leftCol = margin;
-                    const rightCol = pageWidth / 2 + 10;
-
-                    // Left column - Client info
-                    doc.setFont('helvetica', 'bold');
-                    doc.text('Client :', leftCol, yPos);
-                    doc.text('Plant :', leftCol, yPos + 6);
-                    doc.text('Project :', leftCol, yPos + 12);
-                    doc.text('Project No :', leftCol, yPos + 18);
-
-                    doc.setFont('helvetica', 'normal');
-                    doc.text(deviceInfo.client || '-', leftCol + 25, yPos);
-                    doc.text(deviceInfo.plant || deviceInfo.facility_name || '-', leftCol + 25, yPos + 6);
-                    doc.text(deviceInfo.project || '-', leftCol + 25, yPos + 12);
-                    doc.text(deviceInfo.project_no || '-', leftCol + 25, yPos + 18);
-
-                    // Right column - Engineer info
-                    doc.setFont('helvetica', 'bold');
-                    doc.text('Engineered By :', rightCol, yPos);
-                    doc.text('Checked By :', rightCol, yPos + 6);
-                    doc.text('Date :', rightCol, yPos + 12);
-                    doc.text('Revision :', rightCol, yPos + 18);
-
-                    doc.setFont('helvetica', 'normal');
-                    doc.text(reportInfo.engineered_by || '-', rightCol + 30, yPos);
-                    doc.text(reportInfo.checked_by || '-', rightCol + 30, yPos + 6);
-                    doc.text(reportInfo.revision_date || new Date().toLocaleDateString(), rightCol + 30, yPos + 12);
-                    doc.text(reportInfo.revision || 'A', rightCol + 30, yPos + 18);
-
-                    yPos += 28;
+                    yPos += 22;
 
                     // Relief Device & Protected System Details section
                     doc.setFillColor(230, 230, 230);
@@ -1655,9 +1627,9 @@
                     doc.text('Relief Device & Protected System Details', margin + 2, yPos + 5.5);
                     yPos += 10;
 
-                    // Two column layout for device details
+                    const leftCol = margin;
+                    const rightCol = pageWidth / 2 + 10;
                     const detailsY = yPos;
-                    const halfWidth = (pageWidth - 2*margin) / 2;
 
                     // Left column - Relief Device
                     const leftDetails = [
@@ -1671,17 +1643,13 @@
                         ['Ambient Pressure', '14.7']
                     ];
 
-                    // Right column - Orifice and Piping
-                    const selectedOrifice = ORIFICES.find(o => o.size === deviceInfo.selected_orifice) || results.selectedOrifice;
+                    // Right column - Simplified (no pipe schedule/rating)
                     const rightDetails = [
                         ['Orifice Designation', `ASME    ${selectedOrifice?.letter || '-'}`],
-                        ['Actual Orifice Area', `${selectedOrifice?.area?.toFixed(3) || '-'} in²`],
+                        ['API Orifice Area', `${selectedOrifice?.area?.toFixed(3) || '-'} in²`],
                         ['Relief Device Set Pressure (psig)', deviceInfo.set_pressure || '-'],
                         ['', ''],
-                        ['', 'Inlet', 'Outlet'],
-                        ['Nominal Pipe Size (NPS)', deviceInfo.inlet_pipe_size || '-', deviceInfo.outlet_pipe_size || '-'],
-                        ['Pipe Schedule', deviceInfo.inlet_pipe_schedule || 'XS', deviceInfo.outlet_pipe_schedule || 'XS'],
-                        ['Connection Rating', deviceInfo.inlet_connection_rating || 'CL 150', deviceInfo.outlet_connection_rating || 'CL 150']
+                        ['Nominal Pipe Size (NPS)', valvePipeSize],
                     ];
 
                     doc.setFontSize(8);
@@ -1698,15 +1666,10 @@
                         doc.setFont('helvetica', 'normal');
                         doc.text(row[0], rightCol, rowY);
                         doc.setFont('helvetica', 'bold');
-                        if (row.length === 2) {
-                            doc.text(row[1], rightCol + 55, rowY);
-                        } else if (row.length === 3) {
-                            doc.text(row[1], rightCol + 55, rowY);
-                            doc.text(row[2], rightCol + 70, rowY);
-                        }
+                        doc.text(row[1], rightCol + 55, rowY);
                     });
 
-                    yPos = detailsY + 55;
+                    yPos = detailsY + 52;
 
                     // Protected System info
                     doc.setFont('helvetica', 'normal');
@@ -1735,12 +1698,11 @@
                     doc.text('Summary of Potential Relieving Scenarios', margin + 2, yPos + 5.5);
                     yPos += 10;
 
-                    // Scenario table
-                    const scenarioTableHeaders = ['Credible?', 'Scenario', '', 'Required / Rated\nRelieving Flow\n(lb/hr)', 'Required\nOrifice Area\n(in²)', 'Discharge\nTemperature\n(°F)', 'Inlet / Discharge\nPiping Losses\n(%)'];
-                    const colWidths = [22, 35, 30, 30, 25, 22, 28];
+                    // Simplified scenario table (removed piping losses, changed discharge temp to API orifice area)
+                    const scenarioTableHeaders = ['Credible?', 'Scenario', '', 'Required / Rated\nRelieving Flow\n(lb/hr)', 'Required\nOrifice Area\n(in²)', 'API Orifice\nArea\n(in²)'];
+                    const colWidths = [24, 50, 30, 35, 25, 25];
                     const headerH = 18;
 
-                    // Draw header
                     let colX = margin;
                     doc.setFontSize(7);
                     doc.setFont('helvetica', 'bold');
@@ -1757,7 +1719,7 @@
 
                     yPos += headerH;
 
-                    // Build scenario rows
+                    // Build scenario rows with IDs in scenario name
                     const scenarioOrder = ['fire_wetted', 'fire_unwetted', 'hydraulic_thermal', 'blocked_vapor', 'cv_failure'];
                     const scenarioRowH = 8;
 
@@ -1773,14 +1735,16 @@
                             credible = 'SEE COMMENTS';
                         }
 
+                        // Add ID to scenario name (e.g., "1A Fire - Wetted")
+                        const scenarioNameWithId = `${def?.id} ${def?.name || scenId}`;
+
                         const rowData = [
                             credible,
-                            def?.name || scenId,
-                            sr?.cvTag || '', // CV tag for CV Failure scenarios
-                            sr?.applicable ? `${sr.requiredFlow?.toFixed(0) || '-'} / ${sr.ratedFlow?.toFixed(0) || '-'}` : '',
+                            scenarioNameWithId,
+                            sr?.cvTag || '',
+                            sr?.applicable ? `${formatNumber(sr.requiredFlow, 0)} / ${formatNumber(sr.ratedFlow, 0)}` : '',
                             sr?.applicable ? sr.requiredArea?.toFixed(3) : '',
-                            sr?.applicable ? (sr.dischargeTempF?.toFixed(0) || '-') : '',
-                            sr?.applicable ? `${(sr.inletLoss || 0).toFixed(2)}% / ${(sr.outletLoss || 0).toFixed(2)}%` : ''
+                            sr?.applicable ? (selectedOrifice?.area?.toFixed(3) || '-') : ''
                         ];
 
                         colX = margin;
@@ -1788,19 +1752,18 @@
                         doc.setFontSize(7);
 
                         rowData.forEach((cell, i) => {
-                            // Set background color based on credible status
                             if (i === 0) {
                                 if (cell === 'YES') {
-                                    doc.setFillColor(198, 239, 206); // Green
+                                    doc.setFillColor(198, 239, 206);
                                 } else if (cell === 'SEE COMMENTS') {
-                                    doc.setFillColor(255, 235, 156); // Yellow
+                                    doc.setFillColor(255, 235, 156);
                                 } else {
-                                    doc.setFillColor(255, 199, 206); // Red
+                                    doc.setFillColor(255, 199, 206);
                                 }
                             } else if (sr?.applicable) {
-                                doc.setFillColor(198, 239, 206); // Green for applicable rows
+                                doc.setFillColor(198, 239, 206);
                             } else {
-                                doc.setFillColor(230, 230, 230); // Gray for N/A
+                                doc.setFillColor(230, 230, 230);
                             }
 
                             doc.rect(colX, yPos, colWidths[i], scenarioRowH, 'F');
@@ -1837,7 +1800,6 @@
                     doc.setFont('helvetica', 'normal');
                     doc.text('Relieving Fluid', leftCol, yPos);
                     doc.setFont('helvetica', 'bold');
-                    // Determine fluid description from composition
                     const controllingComp = compositions[results.controllingScenario] || {};
                     const compNames = Object.entries(controllingComp).filter(([k,v]) => v > 0).map(([k,v]) => k);
                     const fluidDesc = compNames.length > 0 ? compNames.slice(0, 3).join(' / ').toUpperCase() : 'VAPOR';
@@ -1855,7 +1817,6 @@
                     doc.setFont('helvetica', 'normal');
                     doc.text('Existing Relief System Adequate?:', leftCol, yPos);
 
-                    // Status box
                     doc.setFillColor(isAdequate ? 198 : 255, isAdequate ? 239 : 199, isAdequate ? 206 : 206);
                     doc.rect(leftCol + 55, yPos - 4, 15, 6, 'F');
                     doc.rect(leftCol + 55, yPos - 4, 15, 6);
@@ -1864,7 +1825,6 @@
                     doc.text(isAdequate ? 'YES' : 'NO', leftCol + 62.5, yPos, { align: 'center' });
                     doc.setTextColor(0, 0, 0);
 
-                    // Status description
                     if (!isAdequate) {
                         doc.setFont('helvetica', 'bold');
                         doc.text('RELIEF VALVE UNDERSIZED', leftCol + 75, yPos);
@@ -1885,7 +1845,7 @@
                     doc.text('Potential Relieving Scenario Descriptions', margin + 2, yPos + 5.5);
                     yPos += 15;
 
-                    // Output each scenario description
+                    // Output each scenario description with ID
                     scenarioOrder.forEach(scenId => {
                         const sel = scenarioSelections[scenId];
                         const def = SCENARIO_DEFS[scenId];
@@ -1893,7 +1853,6 @@
 
                         checkNewPage(50);
 
-                        // Scenario header
                         let credible = 'NO';
                         if (sel?.applicable && sr?.applicable) {
                             credible = 'YES';
@@ -1901,15 +1860,16 @@
                             credible = 'SEE COMMENTS';
                         }
 
+                        // Include scenario ID in header
                         doc.setFont('helvetica', 'bolditalic');
                         doc.setFontSize(9);
-                        doc.text(`${def?.name || scenId}`, margin, yPos);
+                        doc.text(`${def?.id} - ${def?.name || scenId}`, margin, yPos);
                         doc.setFont('helvetica', 'normal');
-                        doc.text(`Credible:  ${credible}`, margin + 45, yPos);
+                        doc.text(`Credible:  ${credible}`, margin + 55, yPos);
 
                         yPos += 4;
 
-                        // Description box
+                        // Use the notes from the text box (includes auto-generated for hydraulic)
                         const notes = sel?.notes || `No notes provided for ${def?.name || scenId}.`;
                         const noteLines = doc.splitTextToSize(notes, pageWidth - 2*margin - 4);
                         const boxH = Math.max(15, noteLines.length * 4 + 6);
@@ -1923,7 +1883,7 @@
                         yPos += boxH + 8;
                     });
 
-                    // ========== PAGE 4: CALCULATION DETAILS (OPTIONAL) ==========
+                    // ========== PAGE 4+: CALCULATION DETAILS (per scenario) ==========
                     doc.addPage();
                     yPos = margin;
 
@@ -1935,103 +1895,211 @@
                     doc.text('Calculation Details', margin + 2, yPos + 5.5);
                     yPos += 15;
 
-                    // Fluid compositions for each applicable scenario
-                    Object.keys(compositions).forEach(scenId => {
-                        const comp = compositions[scenId];
+                    // For each applicable scenario, show composition and calculations
+                    scenarioOrder.forEach(scenId => {
                         const sel = scenarioSelections[scenId];
                         const def = SCENARIO_DEFS[scenId];
+                        const sr = results.scenarioResults?.[scenId];
+                        const comp = compositions[scenId] || {};
+
                         if (!sel?.applicable) return;
 
-                        const compEntries = Object.entries(comp).filter(([_, val]) => val > 0);
-                        if (compEntries.length === 0) return;
+                        checkNewPage(80);
 
-                        checkNewPage(40);
-
+                        // Scenario header
                         doc.setFont('helvetica', 'bold');
-                        doc.setFontSize(9);
-                        doc.text(`${def?.fullName || scenId} - Fluid Composition`, margin, yPos);
-                        yPos += 5;
+                        doc.setFontSize(10);
+                        doc.text(`${def?.id} - ${def?.fullName || scenId}`, margin, yPos);
+                        yPos += 8;
 
-                        doc.autoTable({
-                            startY: yPos,
-                            head: [['Component', 'Mol %', 'MW', 'Tc (K)', 'Pc (kPa)']],
-                            body: compEntries.map(([name, val]) => {
-                                const c = COMPONENTS[name] || {};
-                                return [
-                                    c.name || name,
-                                    val.toFixed(2),
-                                    c.mw?.toFixed(2) || '-',
-                                    c.tc?.toFixed(1) || '-',
-                                    ((c.pc || 0) / 1000).toFixed(0) || '-'
+                        // Fluid Composition table (simplified: Component, Mol%, MW)
+                        const compEntries = Object.entries(comp).filter(([_, val]) => val > 0);
+                        if (compEntries.length > 0) {
+                            doc.setFont('helvetica', 'bold');
+                            doc.setFontSize(9);
+                            doc.text('Fluid Composition', margin, yPos);
+                            yPos += 5;
+
+                            doc.autoTable({
+                                startY: yPos,
+                                head: [['Component', 'Mol %', 'MW (lb/lbmol)']],
+                                body: compEntries.map(([name, val]) => {
+                                    const c = COMPONENTS[name] || {};
+                                    return [c.name || name, val.toFixed(2), c.mw?.toFixed(2) || '-'];
+                                }),
+                                theme: 'grid',
+                                headStyles: { fillColor: [200, 220, 240], textColor: [0, 0, 0], fontStyle: 'bold', fontSize: 8 },
+                                bodyStyles: { fontSize: 8 },
+                                margin: { left: margin, right: margin },
+                                tableWidth: 90
+                            });
+                            yPos = doc.lastAutoTable.finalY + 8;
+                        }
+
+                        // Scenario-specific calculations
+                        if (sr?.applicable) {
+                            doc.setFont('helvetica', 'bold');
+                            doc.setFontSize(9);
+                            doc.text('Sizing Calculation', margin, yPos);
+                            yPos += 5;
+
+                            // Build calculation details based on scenario type
+                            let calcDetails = [];
+
+                            if (scenId === 'fire_wetted' || scenId === 'fire_unwetted') {
+                                calcDetails = [
+                                    ['Wetted Area (A)', `${sr.wettedArea?.toFixed(1) || '-'} ft²`],
+                                    ['Heat Input (Q)', `${formatNumber(sr.heatInput, 0)} Btu/hr`],
+                                    ['Latent Heat (λ)', `${sr.latentHeat?.toFixed(0) || '-'} Btu/lb`],
+                                    ['Relief Load (W = Q/λ)', `${formatNumber(sr.requiredFlow, 0)} lb/hr`],
+                                    ['Relieving Pressure (P₁)', `${sr.relievingPressure?.toFixed(1) || '-'} psia`],
+                                    ['Relieving Temperature', `${sr.relievingTempF?.toFixed(0) || '-'} °F`],
+                                    ['Molecular Weight (M)', `${sr.molecularWeight?.toFixed(2) || '-'} lb/lbmol`],
+                                    ['Required Area', `${sr.requiredArea?.toFixed(4) || '-'} in²`]
                                 ];
-                            }),
-                            theme: 'grid',
-                            headStyles: { fillColor: [200, 220, 240], textColor: [0, 0, 0], fontStyle: 'bold', fontSize: 8 },
-                            bodyStyles: { fontSize: 8 },
-                            margin: { left: margin, right: margin },
-                            tableWidth: 100
-                        });
-                        yPos = doc.lastAutoTable.finalY + 10;
+                            } else if (scenId === 'blocked_vapor' || scenId === 'cv_failure') {
+                                calcDetails = [
+                                    ['Flow Rate (W)', `${formatNumber(sr.requiredFlow, 0)} lb/hr`],
+                                    ['Relieving Pressure (P₁)', `${sr.relievingPressure?.toFixed(1) || '-'} psia`],
+                                    ['Relieving Temperature', `${sr.relievingTempF?.toFixed(0) || '-'} °F`],
+                                    ['Molecular Weight (M)', `${sr.molecularWeight?.toFixed(2) || '-'} lb/lbmol`],
+                                    ['Specific Heat Ratio (k)', `${sr.specificHeatRatio?.toFixed(3) || '-'}`],
+                                    ['C Coefficient', `${sr.cCoefficient?.toFixed(1) || '315'}`],
+                                    ['Required Area', `${sr.requiredArea?.toFixed(4) || '-'} in²`]
+                                ];
+                            }
+
+                            if (calcDetails.length > 0) {
+                                doc.autoTable({
+                                    startY: yPos,
+                                    head: [['Parameter', 'Value']],
+                                    body: calcDetails,
+                                    theme: 'grid',
+                                    headStyles: { fillColor: [200, 220, 240], textColor: [0, 0, 0], fontStyle: 'bold', fontSize: 8 },
+                                    bodyStyles: { fontSize: 8 },
+                                    margin: { left: margin, right: margin },
+                                    tableWidth: 100
+                                });
+                                yPos = doc.lastAutoTable.finalY + 8;
+                            }
+
+                            // Sizing Methodology for this scenario
+                            doc.setFont('helvetica', 'bold');
+                            doc.setFontSize(8);
+                            doc.text('Sizing Methodology', margin, yPos);
+                            yPos += 4;
+                            doc.setFont('helvetica', 'normal');
+                            doc.setFontSize(7);
+
+                            let methodText = [];
+                            if (scenId === 'fire_wetted' || scenId === 'fire_unwetted') {
+                                methodText = [
+                                    'Fire Case per API 521:',
+                                    'Q = C₁ × F × A^0.82  where C₁ = 21,000 (adequate drainage) or 34,500 (inadequate)',
+                                    'W = Q / λ',
+                                    'A = W × √(T×Z) / (C × Kd × P₁ × Kb × Kc × √M)'
+                                ];
+                            } else {
+                                methodText = [
+                                    'Vapor Sizing per API 520:',
+                                    'A = W × √(T×Z) / (C × Kd × P₁ × Kb × Kc × √M)',
+                                    'Where: Kd = 0.975 (vapor), Kb = 1.0, Kc = 1.0, Z = 1.0'
+                                ];
+                            }
+
+                            methodText.forEach(line => {
+                                doc.text(line, margin, yPos);
+                                yPos += 3.5;
+                            });
+
+                            yPos += 10;
+                        }
                     });
 
-                    // API Reference
-                    checkNewPage(60);
-                    doc.setFont('helvetica', 'bold');
-                    doc.setFontSize(9);
-                    doc.text('Sizing Methodology', margin, yPos);
-                    yPos += 6;
-
-                    doc.setFont('helvetica', 'normal');
-                    doc.setFontSize(8);
-                    const methodText = [
-                        'Sizing performed per API 520 Part I / API 521 6th Edition',
-                        '',
-                        'Vapor Sizing: A = W × √(T×Z) / (C × Kd × P1 × Kb × Kc × √M)',
-                        'Fire Case: Q = C₁ × F × A^0.82, W = Q / λ',
-                        '',
-                        'Where: A = area (in²), W = mass flow (lb/hr), T = temp (°R), Z = compressibility,',
-                        'C = k coefficient, Kd = discharge coeff, P1 = relieving pressure (psia),',
-                        'Kb = backpressure factor, Kc = combination factor, M = molecular weight'
-                    ];
-                    methodText.forEach(line => {
-                        doc.text(line, margin, yPos);
-                        yPos += 4;
-                    });
-
-                    // ========== FINAL PAGE: REFERENCES & ATTACHMENTS ==========
+                    // ========== REFERENCES & ATTACHMENTS DIVIDER PAGE ==========
                     doc.addPage();
-                    yPos = margin;
+
+                    // Add bookmark/outline for this page
+                    const refPageNum = doc.internal.getNumberOfPages();
 
                     doc.setFontSize(24);
                     doc.setFont('helvetica', 'bold');
+                    doc.setTextColor(0, 0, 0);
                     doc.text('RELIEF DEVICE SIZING', pageWidth / 2, pageHeight / 2 - 10, { align: 'center' });
                     doc.text('REFERENCES & ATTACHMENTS', pageWidth / 2, pageHeight / 2 + 10, { align: 'center' });
 
-                    // If P&ID file is uploaded, note it
+                    // ========== ATTACHMENT PAGES ==========
+                    // Embed uploaded files as images if possible
+                    const embedFile = async (file, title) => {
+                        if (!file) return;
+
+                        doc.addPage();
+                        yPos = margin;
+
+                        doc.setFontSize(12);
+                        doc.setFont('helvetica', 'bold');
+                        doc.text(`Attachment: ${title}`, margin, yPos);
+                        yPos += 8;
+                        doc.setFont('helvetica', 'normal');
+                        doc.setFontSize(10);
+                        doc.text(`File: ${file.name}`, margin, yPos);
+                        yPos += 10;
+
+                        // If it's an image, embed it
+                        if (file.type.startsWith('image/')) {
+                            try {
+                                const reader = new FileReader();
+                                reader.onload = function(e) {
+                                    const imgData = e.target.result;
+                                    const imgFormat = file.type.includes('png') ? 'PNG' : 'JPEG';
+                                    // Calculate dimensions to fit page
+                                    const maxWidth = pageWidth - 2*margin;
+                                    const maxHeight = pageHeight - yPos - 30;
+                                    doc.addImage(imgData, imgFormat, margin, yPos, maxWidth, maxHeight);
+                                };
+                                reader.readAsDataURL(file);
+                            } catch (err) {
+                                doc.text('(Image could not be embedded - see attached file)', margin, yPos);
+                            }
+                        } else {
+                            doc.text('(See attached PDF file)', margin, yPos);
+                        }
+                    };
+
+                    // Handle P&ID file
                     if (pidFile) {
                         doc.addPage();
                         yPos = margin;
                         doc.setFontSize(12);
                         doc.setFont('helvetica', 'bold');
                         doc.text('Attachment: P&ID Drawing', margin, yPos);
-                        yPos += 10;
+                        yPos += 8;
                         doc.setFont('helvetica', 'normal');
                         doc.setFontSize(10);
                         doc.text(`File: ${pidFile.name}`, margin, yPos);
-                        doc.text('(See attached file)', margin, yPos + 6);
+                        yPos += 6;
+                        doc.setFontSize(9);
+                        doc.setTextColor(100, 100, 100);
+                        doc.text('(See attached file - PDF attachments require manual inclusion)', margin, yPos);
+                        doc.setTextColor(0, 0, 0);
                     }
 
+                    // Handle miscellaneous file
                     if (miscFile) {
                         doc.addPage();
                         yPos = margin;
                         doc.setFontSize(12);
                         doc.setFont('helvetica', 'bold');
                         doc.text('Attachment: Supporting Documentation', margin, yPos);
-                        yPos += 10;
+                        yPos += 8;
                         doc.setFont('helvetica', 'normal');
                         doc.setFontSize(10);
                         doc.text(`File: ${miscFile.name}`, margin, yPos);
-                        doc.text('(See attached file)', margin, yPos + 6);
+                        yPos += 6;
+                        doc.setFontSize(9);
+                        doc.setTextColor(100, 100, 100);
+                        doc.text('(See attached file - PDF attachments require manual inclusion)', margin, yPos);
+                        doc.setTextColor(0, 0, 0);
                     }
 
                     // Add footer to all pages
@@ -2042,15 +2110,13 @@
                         doc.setTextColor(128, 128, 128);
                         doc.setFont('helvetica', 'normal');
 
-                        // Draw footer line
                         doc.setDrawColor(200, 200, 200);
                         doc.line(margin, pageHeight - 12, pageWidth - margin, pageHeight - 12);
 
-                        // Footer text
                         if (i > 1) {
                             doc.text(`${deviceInfo.tag || 'PSV'} | Rev. ${reportInfo.revision}`, margin, pageHeight - 8);
                             doc.text(`Page ${i} of ${pageCount}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
-                            doc.text('Franc Engineering | franceng.com', pageWidth - margin, pageHeight - 8, { align: 'right' });
+                            doc.text('Franc Engineering', pageWidth - margin, pageHeight - 8, { align: 'right' });
                         }
                     }
 
