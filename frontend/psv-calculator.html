@@ -1882,26 +1882,58 @@
                         }
 
                         if (isNotCalculated) {
-                            // "Not Calculated" scenarios - light gray Credible/Scenario cells, hatch pattern for data cells
-                            // Credible cell - light gray background
-                            doc.setFillColor(230, 230, 230);
-                            doc.setTextColor(80, 80, 80); // Darker text for readability
+                            // "Not Calculated" scenarios - darker gray with hatch pattern for distinction
+                            // Credible cell - darker gray background with hatch
+                            doc.setFillColor(200, 200, 200); // Darker gray base
                             doc.rect(colX, yPos, colWidths[0], scenarioRowH, 'F');
+                            // Draw hatch lines on credible cell
+                            doc.saveGraphicsState();
                             doc.rect(colX, yPos, colWidths[0], scenarioRowH);
+                            doc.clip();
+                            doc.setDrawColor(170, 170, 170);
+                            doc.setLineWidth(0.3);
+                            for (let i = -scenarioRowH; i < colWidths[0] + scenarioRowH; i += 2.5) {
+                                doc.line(colX + i, yPos + scenarioRowH, colX + i + scenarioRowH, yPos);
+                            }
+                            doc.restoreGraphicsState();
+                            doc.rect(colX, yPos, colWidths[0], scenarioRowH);
+                            doc.setTextColor(60, 60, 60); // Darker text for readability on hatch
                             doc.text(credible, colX + colWidths[0]/2, yPos + scenarioRowH/2 + 1.5, { align: 'center' });
                             colX += colWidths[0];
 
-                            // Scenario name cell - light gray background for readable text
-                            doc.setFillColor(230, 230, 230);
+                            // Scenario name cell - darker gray with hatch but white background for text area
+                            doc.setFillColor(200, 200, 200); // Darker gray base
                             doc.rect(colX, yPos, colWidths[1], scenarioRowH, 'F');
+                            // Draw hatch lines on scenario cell
+                            doc.saveGraphicsState();
+                            doc.rect(colX, yPos, colWidths[1], scenarioRowH);
+                            doc.clip();
+                            doc.setDrawColor(170, 170, 170);
+                            doc.setLineWidth(0.3);
+                            for (let i = -scenarioRowH; i < colWidths[1] + scenarioRowH; i += 2.5) {
+                                doc.line(colX + i, yPos + scenarioRowH, colX + i + scenarioRowH, yPos);
+                            }
+                            doc.restoreGraphicsState();
                             doc.rect(colX, yPos, colWidths[1], scenarioRowH);
                             doc.setFont('helvetica', 'normal');
+                            doc.setTextColor(60, 60, 60); // Darker text for readability
                             doc.text(scenarioNameWithId, colX + colWidths[1]/2, yPos + scenarioRowH/2 + 1.5, { align: 'center' });
                             colX += colWidths[1];
 
-                            // Merged "Not Calculated" cells (span remaining 4 columns) - hatch pattern
+                            // Merged "Not Calculated" cells (span remaining 4 columns) - hatch pattern (darker)
                             const mergedWidth = colWidths[2] + colWidths[3] + colWidths[4] + colWidths[5];
-                            drawHatchPattern(colX, yPos, mergedWidth, scenarioRowH, 2);
+                            // Draw darker hatch for data cells
+                            doc.setFillColor(200, 200, 200);
+                            doc.rect(colX, yPos, mergedWidth, scenarioRowH, 'F');
+                            doc.saveGraphicsState();
+                            doc.rect(colX, yPos, mergedWidth, scenarioRowH);
+                            doc.clip();
+                            doc.setDrawColor(170, 170, 170);
+                            doc.setLineWidth(0.3);
+                            for (let i = -scenarioRowH; i < mergedWidth + scenarioRowH; i += 2.5) {
+                                doc.line(colX + i, yPos + scenarioRowH, colX + i + scenarioRowH, yPos);
+                            }
+                            doc.restoreGraphicsState();
                             doc.rect(colX, yPos, mergedWidth, scenarioRowH);
                             doc.setFont('helvetica', 'italic');
                             doc.text('Not Calculated', colX + mergedWidth/2, yPos + scenarioRowH/2 + 1.5, { align: 'center' });
@@ -1919,8 +1951,11 @@
                             ];
 
                             rowData.forEach((cell, i) => {
-                                // Credible column gets special coloring
-                                if (i === 0) {
+                                // For controlling scenario that is undersized, use red for ALL columns (including Credible)
+                                if (isControlling && scenarioUndersized) {
+                                    doc.setFillColor(255, 199, 206); // Light red for entire row
+                                } else if (i === 0) {
+                                    // Credible column gets special coloring (non-controlling scenarios)
                                     if (cell === 'YES') {
                                         doc.setFillColor(198, 239, 206); // Green for credible
                                     } else if (cell === 'SEE COMMENTS') {
@@ -2448,6 +2483,62 @@
                                     tableWidth: 130
                                 });
                                 yPos = doc.lastAutoTable.finalY + 5;
+
+                                // Bypass Valve Information (Reference Only) - if bypass is configured
+                                if (cond.has_bypass) {
+                                    checkNewPage(35);
+                                    doc.setFont('helvetica', 'bold');
+                                    doc.setFontSize(8);
+                                    doc.setFillColor(255, 250, 230); // Light amber for bypass reference
+                                    doc.rect(margin, yPos, pageWidth - 2*margin, 6, 'F');
+                                    doc.rect(margin, yPos, pageWidth - 2*margin, 6);
+                                    doc.text('Bypass Valve Information (Reference)', margin + 2, yPos + 4);
+                                    yPos += 8;
+
+                                    // Calculate bypass flow values for PDF
+                                    const bypassCvTable = cond.bypass_valve_type === 'globe' ? BYPASS_CV_GLOBE : BYPASS_CV_BALL;
+                                    const bypassCvEntry = bypassCvTable.find(v => v.size === cond.bypass_size);
+                                    const bypassCv = bypassCvEntry ? bypassCvEntry.cv : 0;
+
+                                    // Calculate bypass flow for display
+                                    const M = sr.molecularWeight || 20;
+                                    const Gg = M / 28.97;
+                                    const k = sr.specificHeatRatio || 1.25;
+                                    const Fk = k / 1.4;
+                                    const P1_psia = (parseFloat(cond.upstream_pressure) || 0) + 14.7;
+                                    const P2_psia = sr.relievingPressure || 0;
+                                    const T1_R = ((parseFloat(cond.upstream_temp) || 60) + 460);
+                                    const Z = sr.Z || 0.95;
+                                    const x = P1_psia > 0 ? (P1_psia - P2_psia) / P1_psia : 0;
+                                    const bypassXT = 1.0;
+                                    const bypassXChoked = Fk * bypassXT;
+                                    const bypassXEffective = Math.min(x, bypassXChoked);
+                                    const bypassY = Math.max(1 - bypassXEffective / (3 * Fk * bypassXT), 0.667);
+                                    const N7 = 1360;
+                                    const bypassQ = Gg > 0 && T1_R > 0 && Z > 0
+                                        ? N7 * bypassCv * P1_psia * bypassY * Math.sqrt(bypassXEffective / (Gg * T1_R * Z))
+                                        : 0;
+                                    const bypassW = bypassQ * M / 379.5;
+
+                                    const bypassProps = [
+                                        ['Valve Type', cond.bypass_valve_type === 'globe' ? 'Globe Valve' : 'Ball Valve'],
+                                        ['Nominal Size', cond.bypass_size || '-'],
+                                        ['Bypass Cv', `${bypassCv}`],
+                                        ['Bypass Flow (q)', `${formatNumber(bypassQ, 0)} scfh`],
+                                        ['Bypass Mass Flow (W)', `${formatNumber(bypassW, 0)} lb/hr`],
+                                        ['Used for Sizing', cond.use_bypass_flow ? 'YES' : 'NO']
+                                    ];
+                                    doc.autoTable({
+                                        startY: yPos,
+                                        body: bypassProps,
+                                        theme: 'plain',
+                                        bodyStyles: { fontSize: 8 },
+                                        columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 50, halign: 'right' } },
+                                        margin: { left: margin, right: margin, bottom: footerMargin },
+                                        tableWidth: 130
+                                    });
+                                    yPos = doc.lastAutoTable.finalY + 5;
+                                }
 
                                 // Calculated Flow section
                                 checkNewPage(30);
