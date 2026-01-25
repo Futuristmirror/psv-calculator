@@ -381,7 +381,7 @@
                 seam_to_seam: 10, // ft
                 height_above_grade: 2, // ft
                 max_liquid_level: 50, // %
-                additional_area: 0, // ft² (can be negative to exclude)
+                additional_area: 0, // % adjustment (can be negative to exclude)
             });
 
             // Scenario-specific conditions
@@ -534,7 +534,7 @@
                     // 2:1 elliptical head volume = π × D³ / 24
                     headVolume = Math.PI * Math.pow(D_ft, 3) / 24;
                 } else if (vessel.head_type === 'hemispherical') {
-                    // Hemisphere surface area = π × D² / 2
+                    // Hemisphere surface area = 2πR² = π × D² / 2
                     headArea = Math.PI * D_ft * D_ft / 2;
                     // Hemisphere volume = π × D³ / 12
                     headVolume = Math.PI * Math.pow(D_ft, 3) / 12;
@@ -560,12 +560,21 @@
                 let unwettedArea = 0;
 
                 if (vessel.orientation === 'horizontal') {
-                    // Approximate wetted shell area for horizontal cylinder
+                    // Shell wetted area uses chord angle calculation
                     const h = liquidFrac * D_ft;
                     const theta = 2 * Math.acos(Math.max(-1, Math.min(1, (R_ft - h) / R_ft)));
                     const wettedShellFrac = theta / (2 * Math.PI);
                     const wettedShell = wettedShellFrac * shellArea;
-                    const wettedHeads = wettedShellFrac * totalHeadArea;
+
+                    // For hemispherical heads, use liquid level fraction directly
+                    // For other heads, use shell chord fraction
+                    let wettedHeads;
+                    if (vessel.head_type === 'hemispherical') {
+                        wettedHeads = liquidFrac * totalHeadArea;
+                    } else {
+                        wettedHeads = wettedShellFrac * totalHeadArea;
+                    }
+
                     wettedArea = wettedShell + wettedHeads;
                     unwettedArea = totalArea - wettedArea;
                 } else {
@@ -578,16 +587,17 @@
                     unwettedArea = totalArea - wettedArea;
                 }
 
-                // Apply additional area adjustment
-                const adjustedUnwetted = Math.max(0, unwettedArea + vessel.additional_area);
-                const adjustedWetted = Math.max(0, wettedArea + vessel.additional_area);
+                // Apply additional area adjustment as PERCENTAGE
+                const additionalPct = (vessel.additional_area || 0) / 100;
+                const adjustedWetted = wettedArea * (1 + additionalPct);
+                const adjustedUnwetted = unwettedArea * (1 + additionalPct);
 
                 return {
                     total: totalArea,
                     shell: shellArea,
                     heads: totalHeadArea,
-                    wetted: wettedArea,
-                    unwetted: unwettedArea,
+                    wetted: adjustedWetted,
+                    unwetted: adjustedUnwetted,
                     adjustedUnwetted,
                     adjustedWetted,
                     volume_ft3: totalVolume_ft3,
@@ -1831,7 +1841,7 @@
                                                             <input type="number" value={vesselDetails.additional_area}
                                                                 onChange={(e) => updateVesselDetail('additional_area', e.target.value)}
                                                                 className="w-20 px-3 py-1.5 bg-green-50 border border-green-300 rounded text-sm text-right focus:outline-none focus:border-green-500" />
-                                                            <span className="text-xs text-gray-500">ft²</span>
+                                                            <span className="text-xs text-gray-500">%</span>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -2237,7 +2247,7 @@
                                                             <input type="number" value={vesselDetails.additional_area}
                                                                 onChange={(e) => updateVesselDetail('additional_area', e.target.value)}
                                                                 className="w-20 px-3 py-1.5 bg-green-50 border border-green-300 rounded text-sm text-right focus:outline-none focus:border-green-500" />
-                                                            <span className="text-xs text-gray-500">ft²</span>
+                                                            <span className="text-xs text-gray-500">%</span>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -2452,33 +2462,6 @@
                                                     <span className="text-sm font-bold text-red-700 w-24 text-right">{W > 0 ? W.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'}</span>
                                                     <span className="text-xs text-gray-500 w-12">lb/hr</span>
                                                 </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Calculation Inputs Summary for Verification */}
-                                        <div className="mt-6 bg-gray-100 rounded-lg p-4">
-                                            <h4 className="font-medium text-gray-700 mb-3">Calculation Inputs (for verification)</h4>
-                                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs font-mono">
-                                                <div>Set P = {setP} psig</div>
-                                                <div>Overpressure = 21%</div>
-                                                <div>P₁ = {p1_psig.toFixed(2)} psig</div>
-                                                <div>P₁ = {p1_psia.toFixed(2)} psia</div>
-                                                <div>M = {M.toFixed(3)} lb/lbmol</div>
-                                                <div>k = {k.toFixed(4)}</div>
-                                                <div>C (API 520) = {C.toFixed(2)}</div>
-                                                <div>A_wet = {wettedArea.toFixed(2)} ft²</div>
-                                                <div>C_heat = {heatAbsorptionConstant}</div>
-                                                <div>F = {F.toFixed(2)}</div>
-                                                <div>Q = {Q.toFixed(0)} Btu/hr</div>
-                                                <div>λ = {latentHeat.toFixed(1)} Btu/lb</div>
-                                                <div>W = {W.toFixed(1)} lb/hr</div>
-                                                <div>T₁ = {T_bubble.toFixed(1)} °F</div>
-                                                <div>T₁ = {T1_R.toFixed(2)} °R</div>
-                                                <div>Z = {Z.toFixed(2)}</div>
-                                                <div>Kd = {Kd}</div>
-                                                <div>Kb = {Kb}</div>
-                                                <div>Kc = {Kc}</div>
-                                                <div>A_req = {requiredArea.toFixed(6)} in²</div>
                                             </div>
                                         </div>
                                     </div>
