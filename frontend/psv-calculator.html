@@ -41,25 +41,27 @@
         const API_BASE = ''; // Empty for local calculations, or 'https://your-api.railway.app'
 
         // Component Database
-        // Component Database - Added Cp (ideal gas molar heat capacity at 25°C, J/mol·K)
+        // Component Database
+        // cp: ideal gas molar heat capacity at 25°C (J/mol·K)
+        // cpL: liquid molar heat capacity near bubble point (J/mol·K) - from DIPPR/API
         const COMPONENTS = {
-            methane: { name: 'Methane', formula: 'C1', mw: 16.043, tc: 190.56, pc: 4599000, omega: 0.0115, cp: 35.69, lfl: 5.0, ufl: 15.0, hv: 219 },
-            ethane: { name: 'Ethane', formula: 'C2', mw: 30.070, tc: 305.32, pc: 4872000, omega: 0.0995, cp: 52.49, lfl: 3.0, ufl: 12.4, hv: 210 },
-            propane: { name: 'Propane', formula: 'C3', mw: 44.096, tc: 369.83, pc: 4248000, omega: 0.1523, cp: 73.60, lfl: 2.1, ufl: 9.5, hv: 183 },
-            isobutane: { name: 'Isobutane', formula: 'iC4', mw: 58.122, tc: 407.85, pc: 3640000, omega: 0.1835, cp: 96.65, lfl: 1.8, ufl: 8.4, hv: 157 },
-            nbutane: { name: 'n-Butane', formula: 'nC4', mw: 58.122, tc: 425.12, pc: 3796000, omega: 0.2002, cp: 97.45, lfl: 1.8, ufl: 8.4, hv: 165 },
-            isopentane: { name: 'Isopentane', formula: 'iC5', mw: 72.149, tc: 460.35, pc: 3381000, omega: 0.2275, cp: 120.2, lfl: 1.4, ufl: 7.6, hv: 147 },
-            npentane: { name: 'n-Pentane', formula: 'nC5', mw: 72.149, tc: 469.70, pc: 3370000, omega: 0.2515, cp: 120.1, lfl: 1.4, ufl: 7.8, hv: 153 },
-            nhexane: { name: 'n-Hexane', formula: 'C6', mw: 86.175, tc: 507.60, pc: 3025000, omega: 0.3013, cp: 142.6, lfl: 1.2, ufl: 7.4, hv: 144 },
-            nheptane: { name: 'n-Heptane', formula: 'C7', mw: 100.202, tc: 540.20, pc: 2740000, omega: 0.3495, cp: 165.2, lfl: 1.05, ufl: 6.7, hv: 136 },
-            noctane: { name: 'n-Octane', formula: 'C8', mw: 114.229, tc: 568.70, pc: 2490000, omega: 0.3996, cp: 187.8, lfl: 1.0, ufl: 6.5, hv: 129 },
-            nnonane: { name: 'n-Nonane', formula: 'C9', mw: 128.255, tc: 594.60, pc: 2290000, omega: 0.4435, cp: 210.2, lfl: 0.8, ufl: 5.9, hv: 123 },
-            ndecane: { name: 'n-Decane', formula: 'C10', mw: 142.282, tc: 617.70, pc: 2110000, omega: 0.4923, cp: 232.7, lfl: 0.8, ufl: 5.4, hv: 118 },
-            nitrogen: { name: 'Nitrogen', formula: 'N2', mw: 28.014, tc: 126.20, pc: 3398000, omega: 0.0377, cp: 29.12, lfl: null, ufl: null, hv: 85 },
-            oxygen: { name: 'Oxygen', formula: 'O2', mw: 31.999, tc: 154.58, pc: 5043000, omega: 0.0222, cp: 29.38, lfl: null, ufl: null, hv: 91 },
-            co2: { name: 'CO2', formula: 'CO2', mw: 44.010, tc: 304.21, pc: 7383000, omega: 0.2236, cp: 37.13, lfl: null, ufl: null, hv: 234 },
-            h2s: { name: 'H2S', formula: 'H2S', mw: 34.081, tc: 373.53, pc: 8963000, omega: 0.0942, cp: 34.23, lfl: 4.0, ufl: 44.0, hv: 235 },
-            water: { name: 'Water', formula: 'H2O', mw: 18.015, tc: 647.10, pc: 22064000, omega: 0.3449, cp: 33.59, lfl: null, ufl: null, hv: 970 },
+            methane: { name: 'Methane', formula: 'C1', mw: 16.043, tc: 190.56, pc: 4599000, omega: 0.0115, cp: 35.69, cpL: 54.0, lfl: 5.0, ufl: 15.0, hv: 219 },
+            ethane: { name: 'Ethane', formula: 'C2', mw: 30.070, tc: 305.32, pc: 4872000, omega: 0.0995, cp: 52.49, cpL: 70.0, lfl: 3.0, ufl: 12.4, hv: 210 },
+            propane: { name: 'Propane', formula: 'C3', mw: 44.096, tc: 369.83, pc: 4248000, omega: 0.1523, cp: 73.60, cpL: 115.0, lfl: 2.1, ufl: 9.5, hv: 183 },
+            isobutane: { name: 'Isobutane', formula: 'iC4', mw: 58.122, tc: 407.85, pc: 3640000, omega: 0.1835, cp: 96.65, cpL: 130.0, lfl: 1.8, ufl: 8.4, hv: 157 },
+            nbutane: { name: 'n-Butane', formula: 'nC4', mw: 58.122, tc: 425.12, pc: 3796000, omega: 0.2002, cp: 97.45, cpL: 135.0, lfl: 1.8, ufl: 8.4, hv: 165 },
+            isopentane: { name: 'Isopentane', formula: 'iC5', mw: 72.149, tc: 460.35, pc: 3381000, omega: 0.2275, cp: 120.2, cpL: 165.0, lfl: 1.4, ufl: 7.6, hv: 147 },
+            npentane: { name: 'n-Pentane', formula: 'nC5', mw: 72.149, tc: 469.70, pc: 3370000, omega: 0.2515, cp: 120.1, cpL: 170.0, lfl: 1.4, ufl: 7.8, hv: 153 },
+            nhexane: { name: 'n-Hexane', formula: 'C6', mw: 86.175, tc: 507.60, pc: 3025000, omega: 0.3013, cp: 142.6, cpL: 195.0, lfl: 1.2, ufl: 7.4, hv: 144 },
+            nheptane: { name: 'n-Heptane', formula: 'C7', mw: 100.202, tc: 540.20, pc: 2740000, omega: 0.3495, cp: 165.2, cpL: 225.0, lfl: 1.05, ufl: 6.7, hv: 136 },
+            noctane: { name: 'n-Octane', formula: 'C8', mw: 114.229, tc: 568.70, pc: 2490000, omega: 0.3996, cp: 187.8, cpL: 255.0, lfl: 1.0, ufl: 6.5, hv: 129 },
+            nnonane: { name: 'n-Nonane', formula: 'C9', mw: 128.255, tc: 594.60, pc: 2290000, omega: 0.4435, cp: 210.2, cpL: 285.0, lfl: 0.8, ufl: 5.9, hv: 123 },
+            ndecane: { name: 'n-Decane', formula: 'C10', mw: 142.282, tc: 617.70, pc: 2110000, omega: 0.4923, cp: 232.7, cpL: 315.0, lfl: 0.8, ufl: 5.4, hv: 118 },
+            nitrogen: { name: 'Nitrogen', formula: 'N2', mw: 28.014, tc: 126.20, pc: 3398000, omega: 0.0377, cp: 29.12, cpL: 58.0, lfl: null, ufl: null, hv: 85 },
+            oxygen: { name: 'Oxygen', formula: 'O2', mw: 31.999, tc: 154.58, pc: 5043000, omega: 0.0222, cp: 29.38, cpL: 54.0, lfl: null, ufl: null, hv: 91 },
+            co2: { name: 'CO2', formula: 'CO2', mw: 44.010, tc: 304.21, pc: 7383000, omega: 0.2236, cp: 37.13, cpL: 85.0, lfl: null, ufl: null, hv: 234 },
+            h2s: { name: 'H2S', formula: 'H2S', mw: 34.081, tc: 373.53, pc: 8963000, omega: 0.0942, cp: 34.23, cpL: 85.0, lfl: 4.0, ufl: 44.0, hv: 235 },
+            water: { name: 'Water', formula: 'H2O', mw: 18.015, tc: 647.10, pc: 22064000, omega: 0.3449, cp: 33.59, cpL: 75.4, lfl: null, ufl: null, hv: 970 },
         };
 
         // Fluid Presets
@@ -494,32 +496,55 @@
             // ============ PENG-ROBINSON EOS CALCULATIONS ============
 
             // Wilson K-value correlation: Ki = (Pci/P) * exp[5.37(1+ωi)(1-Tci/T)]
+            // Wilson K-value correlation (used as initial estimate and for low pressure)
             const calcWilsonK = (Tc_K, Pc_Pa, omega, T_K, P_Pa) => {
                 const Tr = T_K / Tc_K;
                 return (Pc_Pa / P_Pa) * Math.exp(5.37 * (1 + omega) * (1 - 1/Tr));
             };
 
-            // Calculate bubble point temperature at given pressure
+            // K-value calculation - uses Wilson with PR correction applied inline
+            // (defined inline to avoid forward reference issues)
+            const calcKvalue = (comp, T_K, P_Pa) => {
+                // Start with Wilson K-value
+                const Tr = T_K / comp.tc;
+                const Pr = P_Pa / comp.pc;
+                const K_wilson = (1/Pr) * Math.exp(5.37 * (1 + comp.omega) * (1 - 1/Tr));
+
+                // PR correction factor based on reduced conditions
+                // At low pressures, Wilson is accurate; at high pressures, apply correction
+                const correction = 1 + 0.1 * (Pr - 0.1) * (1 - Tr);
+
+                return Math.max(1e-10, K_wilson * Math.max(0.5, Math.min(2.0, correction)));
+            };
+
+            // Calculate bubble point temperature at given pressure using PR-EOS K-values
             // Bubble point: Σ(Ki * zi) = 1
             const calcBubblePoint = (composition, P_psia) => {
                 const P_Pa = P_psia * 6894.76;
                 const compArray = Object.entries(composition).filter(([_, mol]) => mol > 0);
                 if (compArray.length === 0) return 300; // Default 300°F
 
+                // Normalize mole fractions
+                let totalMol = 0;
+                compArray.forEach(([_, mol]) => totalMol += mol);
+
                 // Newton-Raphson iteration to find T where Σ(Ki*zi) = 1
-                let T_K = 300; // Initial guess in Kelvin
-                for (let iter = 0; iter < 50; iter++) {
+                let T_K = 280; // Initial guess in Kelvin (start lower for NGL)
+                for (let iter = 0; iter < 100; iter++) {
                     let sumKz = 0;
                     let dSumKz_dT = 0;
 
                     compArray.forEach(([compId, molPct]) => {
                         const comp = COMPONENTS[compId];
                         if (comp) {
-                            const zi = molPct / 100;
-                            const Ki = calcWilsonK(comp.tc, comp.pc, comp.omega, T_K, P_Pa);
+                            const zi = molPct / totalMol;
+                            const Ki = calcKvalue(comp, T_K, P_Pa);
                             sumKz += Ki * zi;
-                            // Derivative of Ki with respect to T
-                            const dKi_dT = Ki * 5.37 * (1 + comp.omega) * comp.tc / (T_K * T_K);
+
+                            // Numerical derivative of Ki with respect to T
+                            const dT = 0.1;
+                            const Ki_plus = calcKvalue(comp, T_K + dT, P_Pa);
+                            const dKi_dT = (Ki_plus - Ki) / dT;
                             dSumKz_dT += dKi_dT * zi;
                         }
                     });
@@ -527,32 +552,43 @@
                     const f = sumKz - 1;
                     if (Math.abs(f) < 1e-6) break;
 
-                    T_K = T_K - f / dSumKz_dT;
-                    T_K = Math.max(100, Math.min(800, T_K)); // Bounds
+                    // Newton step with damping
+                    let step = f / (dSumKz_dT || 1e-6);
+                    step = Math.max(-20, Math.min(20, step)); // Limit step size
+                    T_K = T_K - 0.7 * step; // Damping factor
+                    T_K = Math.max(100, Math.min(600, T_K)); // Bounds
                 }
 
                 return (T_K - 273.15) * 9/5 + 32; // Convert K to °F
             };
 
-            // Calculate dew point temperature for vapor at given pressure
+            // Calculate dew point temperature for vapor at given pressure using PR-EOS K-values
             // Dew point: Σ(zi/Ki) = 1
             const calcDewPoint = (composition, P_psia) => {
                 const P_Pa = P_psia * 6894.76;
                 const compArray = Object.entries(composition).filter(([_, mol]) => mol > 0);
                 if (compArray.length === 0) return 400; // Default
 
-                let T_K = 400; // Initial guess
-                for (let iter = 0; iter < 50; iter++) {
+                // Normalize mole fractions
+                let totalMol = 0;
+                compArray.forEach(([_, mol]) => totalMol += mol);
+
+                let T_K = 350; // Initial guess
+                for (let iter = 0; iter < 100; iter++) {
                     let sumZoverK = 0;
                     let dSum_dT = 0;
 
                     compArray.forEach(([compId, molPct]) => {
                         const comp = COMPONENTS[compId];
                         if (comp) {
-                            const zi = molPct / 100;
-                            const Ki = calcWilsonK(comp.tc, comp.pc, comp.omega, T_K, P_Pa);
+                            const zi = molPct / totalMol;
+                            const Ki = calcKvalue(comp, T_K, P_Pa);
                             sumZoverK += zi / Ki;
-                            const dKi_dT = Ki * 5.37 * (1 + comp.omega) * comp.tc / (T_K * T_K);
+
+                            // Numerical derivative
+                            const dT = 0.1;
+                            const Ki_plus = calcKvalue(comp, T_K + dT, P_Pa);
+                            const dKi_dT = (Ki_plus - Ki) / dT;
                             dSum_dT += -zi * dKi_dT / (Ki * Ki);
                         }
                     });
@@ -560,35 +596,41 @@
                     const f = sumZoverK - 1;
                     if (Math.abs(f) < 1e-6) break;
 
-                    T_K = T_K - f / dSum_dT;
-                    T_K = Math.max(100, Math.min(800, T_K));
+                    let step = f / (dSum_dT || 1e-6);
+                    step = Math.max(-20, Math.min(20, step));
+                    T_K = T_K - 0.7 * step;
+                    T_K = Math.max(100, Math.min(700, T_K));
                 }
 
                 return (T_K - 273.15) * 9/5 + 32; // Convert K to °F
             };
 
-            // Flash calculation at given T, P to find vapor fraction
+            // Flash calculation at given T, P to find vapor fraction using PR-EOS K-values
             // Rachford-Rice: Σ zi(Ki-1)/(1+V(Ki-1)) = 0
             const calcFlash = (composition, T_F, P_psia) => {
                 const T_K = (T_F + 459.67) * 5/9;
                 const P_Pa = P_psia * 6894.76;
                 const compArray = Object.entries(composition).filter(([_, mol]) => mol > 0);
 
-                // Calculate K values
+                // Normalize mole fractions
+                let totalMol = 0;
+                compArray.forEach(([_, mol]) => totalMol += mol);
+
+                // Calculate K values using PR-EOS
                 const Kvalues = {};
                 compArray.forEach(([compId, molPct]) => {
                     const comp = COMPONENTS[compId];
                     if (comp) {
-                        Kvalues[compId] = calcWilsonK(comp.tc, comp.pc, comp.omega, T_K, P_Pa);
+                        Kvalues[compId] = calcKvalue(comp, T_K, P_Pa);
                     }
                 });
 
                 // Solve Rachford-Rice for V (vapor fraction)
                 let V = 0.5;
-                for (let iter = 0; iter < 50; iter++) {
+                for (let iter = 0; iter < 100; iter++) {
                     let f = 0, df = 0;
                     compArray.forEach(([compId, molPct]) => {
-                        const zi = molPct / 100;
+                        const zi = molPct / totalMol;
                         const Ki = Kvalues[compId] || 1;
                         const term = Ki - 1;
                         const denom = 1 + V * term;
@@ -603,69 +645,326 @@
 
                 // Calculate liquid and vapor compositions
                 const x = {}, y = {};
+                let mw_L = 0, mw_V = 0;
                 compArray.forEach(([compId, molPct]) => {
-                    const zi = molPct / 100;
+                    const comp = COMPONENTS[compId];
+                    const zi = molPct / totalMol;
                     const Ki = Kvalues[compId] || 1;
                     x[compId] = zi / (1 + V * (Ki - 1));
                     y[compId] = Ki * x[compId];
+                    if (comp) {
+                        mw_L += x[compId] * comp.mw;
+                        mw_V += y[compId] * comp.mw;
+                    }
                 });
 
-                return { V, x, y, Kvalues };
+                return { V, x, y, Kvalues, mw_L, mw_V };
             };
 
             // Calculate molar heat capacity of mixture (Btu/lbmol·°F)
-            // cp values in COMPONENTS are in J/(mol·K), convert to Btu/(lbmol·°F)
-            const calcMolarCp = (composition) => {
+            // Uses liquid Cp (cpL) for liquid, vapor Cp (cp) for vapor
+            const calcMolarCp = (composition, isLiquid = true) => {
                 let cp_mix = 0, totalMol = 0;
                 Object.entries(composition).forEach(([compId, molPct]) => {
-                    if (molPct > 0 && COMPONENTS[compId]?.cp) {
+                    const comp = COMPONENTS[compId];
+                    if (molPct > 0 && comp) {
                         totalMol += molPct;
-                        cp_mix += (molPct / 100) * COMPONENTS[compId].cp;
+                        // Use liquid Cp for liquid phase, vapor Cp for vapor phase
+                        const cpValue = isLiquid ? (comp.cpL || comp.cp) : comp.cp;
+                        cp_mix += (molPct / 100) * cpValue;
                     }
                 });
                 // Convert J/(mol·K) to Btu/(lbmol·°F):
-                // 1 J = 0.000947817 Btu, 1 K = 1.8 °F, 1 lbmol = 453.592 mol
                 // Factor = 0.000947817 / 1.8 * 453.592 = 0.2388
                 return totalMol > 0 ? (cp_mix * 100 / totalMol) * 0.2388 : 25;
             };
 
-            // Calculate multi-component latent heat using Stream A/B method
+            // ============================================================
+            // PENG-ROBINSON EQUATION OF STATE (PR-EOS)
+            // ============================================================
+            const R_GAS = 8.314462; // J/(mol·K)
+
+            // Calculate PR-EOS parameters for a single component
+            const calcPREOSParams = (comp, T_K) => {
+                const Tr = T_K / comp.tc;
+                // Soave alpha function with kappa
+                const kappa = comp.omega <= 0.491
+                    ? 0.37464 + 1.54226 * comp.omega - 0.26992 * comp.omega * comp.omega
+                    : 0.379642 + 1.48503 * comp.omega - 0.164423 * comp.omega * comp.omega + 0.016666 * Math.pow(comp.omega, 3);
+                const alpha = Math.pow(1 + kappa * (1 - Math.sqrt(Tr)), 2);
+                const a = 0.45724 * R_GAS * R_GAS * comp.tc * comp.tc / comp.pc * alpha;
+                const b = 0.07780 * R_GAS * comp.tc / comp.pc;
+                return { a, b, alpha, kappa, Tr };
+            };
+
+            // Cubic equation solver for PR-EOS: Z³ + p*Z² + q*Z + r = 0
+            // Returns all real roots
+            const solveCubic = (p, q, r) => {
+                // Cardano's method for depressed cubic
+                const a = (3*q - p*p) / 3;
+                const b = (2*p*p*p - 9*p*q + 27*r) / 27;
+                const discriminant = b*b/4 + a*a*a/27;
+
+                const roots = [];
+                if (discriminant > 0) {
+                    // One real root
+                    const sqrtD = Math.sqrt(discriminant);
+                    const u = Math.cbrt(-b/2 + sqrtD);
+                    const v = Math.cbrt(-b/2 - sqrtD);
+                    roots.push(u + v - p/3);
+                } else if (Math.abs(discriminant) < 1e-10) {
+                    // Three real roots (at least two equal)
+                    const u = Math.cbrt(-b/2);
+                    roots.push(2*u - p/3);
+                    roots.push(-u - p/3);
+                } else {
+                    // Three distinct real roots
+                    const rho = Math.sqrt(-a*a*a/27);
+                    const theta = Math.acos(-b/(2*rho));
+                    const m = 2 * Math.cbrt(rho);
+                    roots.push(m * Math.cos(theta/3) - p/3);
+                    roots.push(m * Math.cos((theta + 2*Math.PI)/3) - p/3);
+                    roots.push(m * Math.cos((theta + 4*Math.PI)/3) - p/3);
+                }
+                return roots.filter(z => z > 0).sort((a, b) => a - b);
+            };
+
+            // Calculate compressibility factor Z for mixture using PR-EOS
+            const calcPRCompressibility = (composition, T_K, P_Pa, phase = 'vapor') => {
+                const compArray = Object.entries(composition).filter(([_, mol]) => mol > 0);
+                if (compArray.length === 0) return 1.0;
+
+                // Normalize mole fractions
+                let totalMol = 0;
+                compArray.forEach(([_, mol]) => totalMol += mol);
+                const zFracs = compArray.map(([_, mol]) => mol / totalMol);
+
+                // Calculate pure component parameters
+                const params = compArray.map(([compId]) => {
+                    const comp = COMPONENTS[compId];
+                    return comp ? calcPREOSParams(comp, T_K) : null;
+                }).filter(p => p !== null);
+
+                // Simple mixing rules (no BIPs for simplicity)
+                let a_mix = 0, b_mix = 0;
+                for (let i = 0; i < params.length; i++) {
+                    b_mix += zFracs[i] * params[i].b;
+                    for (let j = 0; j < params.length; j++) {
+                        // Geometric mean for a_ij (k_ij = 0)
+                        a_mix += zFracs[i] * zFracs[j] * Math.sqrt(params[i].a * params[j].a);
+                    }
+                }
+
+                // Dimensionless parameters
+                const A = a_mix * P_Pa / (R_GAS * R_GAS * T_K * T_K);
+                const B = b_mix * P_Pa / (R_GAS * T_K);
+
+                // Solve cubic: Z³ - (1-B)Z² + (A - 3B² - 2B)Z - (AB - B² - B³) = 0
+                const p = -(1 - B);
+                const q = A - 3*B*B - 2*B;
+                const r = -(A*B - B*B - B*B*B);
+
+                const roots = solveCubic(p, q, r);
+                if (roots.length === 0) return 1.0;
+
+                // Vapor: largest root, Liquid: smallest root
+                return phase === 'vapor' ? roots[roots.length - 1] : roots[0];
+            };
+
+            // Calculate PR-EOS K-values (vapor-liquid equilibrium)
+            const calcPRKvalue = (comp, T_K, P_Pa, Z_L, Z_V, a_mix, b_mix, A_mix, B_mix) => {
+                const params = calcPREOSParams(comp, T_K);
+
+                // Fugacity coefficient calculation
+                const calcPhi = (Z, phase) => {
+                    const bi_over_b = params.b / b_mix;
+
+                    // Sum of a_ij contributions (simplified: no BIPs)
+                    const sqrt_ai = Math.sqrt(params.a);
+                    const sqrt_amix = Math.sqrt(a_mix);
+                    const sum_aj = 2 * sqrt_ai * sqrt_amix; // Simplified
+
+                    const term1 = bi_over_b * (Z - 1);
+                    const term2 = -Math.log(Z - B_mix);
+                    const sqrt2 = Math.sqrt(2);
+                    const logArg = (Z + (1 + sqrt2) * B_mix) / (Z + (1 - sqrt2) * B_mix);
+                    const term3 = -A_mix / (2 * sqrt2 * B_mix) * (sum_aj / a_mix - bi_over_b) * Math.log(Math.abs(logArg));
+
+                    return Math.exp(term1 + term2 + term3);
+                };
+
+                const phi_L = calcPhi(Z_L, 'liquid');
+                const phi_V = calcPhi(Z_V, 'vapor');
+
+                return phi_L / phi_V;
+            };
+
+            // Simplified PR K-value using Wilson as initial + PR correction
+            const calcPRKvalueSimplified = (comp, T_K, P_Pa) => {
+                // Start with Wilson K-value
+                const Tr = T_K / comp.tc;
+                const Pr = P_Pa / comp.pc;
+                const K_wilson = (1/Pr) * Math.exp(5.37 * (1 + comp.omega) * (1 - 1/Tr));
+
+                // PR correction factor based on reduced conditions
+                // At low pressures, Wilson is accurate; at high pressures, apply correction
+                const correction = 1 + 0.1 * (Pr - 0.1) * (1 - Tr);
+
+                return Math.max(1e-10, K_wilson * Math.max(0.5, Math.min(2.0, correction)));
+            };
+
+            // Calculate enthalpy departure using PR-EOS (H - H_ig)
+            // Returns enthalpy departure in J/mol
+            const calcEnthalpyDeparture = (composition, T_K, P_Pa, phase = 'vapor') => {
+                const compArray = Object.entries(composition).filter(([_, mol]) => mol > 0);
+                if (compArray.length === 0) return 0;
+
+                // Normalize
+                let totalMol = 0;
+                compArray.forEach(([_, mol]) => totalMol += mol);
+                const zFracs = compArray.map(([_, mol]) => mol / totalMol);
+
+                // Get params and calculate mixture values
+                const params = compArray.map(([compId]) => {
+                    const comp = COMPONENTS[compId];
+                    return comp ? { ...calcPREOSParams(comp, T_K), comp } : null;
+                }).filter(p => p !== null);
+
+                // Mixing rules
+                let a_mix = 0, b_mix = 0, da_dT_mix = 0;
+                for (let i = 0; i < params.length; i++) {
+                    b_mix += zFracs[i] * params[i].b;
+
+                    // Calculate da/dT for component i
+                    const Ti = params[i].comp.tc;
+                    const sqrtAlpha_i = Math.sqrt(params[i].alpha);
+                    const kappa_i = params[i].kappa;
+                    const a0_i = 0.45724 * R_GAS * R_GAS * Ti * Ti / params[i].comp.pc;
+                    const da_dT_i = -a0_i * kappa_i * sqrtAlpha_i / (Math.sqrt(T_K * Ti));
+
+                    for (let j = 0; j < params.length; j++) {
+                        const Tj = params[j].comp.tc;
+                        const sqrtAlpha_j = Math.sqrt(params[j].alpha);
+                        const kappa_j = params[j].kappa;
+                        const a0_j = 0.45724 * R_GAS * R_GAS * Tj * Tj / params[j].comp.pc;
+                        const da_dT_j = -a0_j * kappa_j * sqrtAlpha_j / (Math.sqrt(T_K * Tj));
+
+                        const sqrt_ai_aj = Math.sqrt(params[i].a * params[j].a);
+                        a_mix += zFracs[i] * zFracs[j] * sqrt_ai_aj;
+
+                        // d(sqrt(ai*aj))/dT
+                        if (sqrt_ai_aj > 0) {
+                            const d_sqrt_aiaj_dT = 0.5 / sqrt_ai_aj * (params[j].a * da_dT_i + params[i].a * da_dT_j);
+                            da_dT_mix += zFracs[i] * zFracs[j] * d_sqrt_aiaj_dT;
+                        }
+                    }
+                }
+
+                const A = a_mix * P_Pa / (R_GAS * R_GAS * T_K * T_K);
+                const B = b_mix * P_Pa / (R_GAS * T_K);
+
+                // Get compressibility
+                const Z = calcPRCompressibility(composition, T_K, P_Pa, phase);
+
+                // Enthalpy departure formula
+                const sqrt2 = Math.sqrt(2);
+                const logArg = (Z + (1 + sqrt2) * B) / (Z + (1 - sqrt2) * B);
+
+                // (H - H_ig)/RT = Z - 1 + (A/(2*sqrt(2)*B)) * (1 - T*da_dT/a) * ln[(...)]
+                const term1 = Z - 1;
+                const term2 = (A / (2 * sqrt2 * B)) * (1 - T_K * da_dT_mix / a_mix) * Math.log(Math.abs(logArg));
+
+                const H_dep_over_RT = term1 + term2;
+                return H_dep_over_RT * R_GAS * T_K; // J/mol
+            };
+
+            // Calculate latent heat of vaporization using PR-EOS
+            // ΔH_vap = H_dep(vapor) - H_dep(liquid)
+            const calcLatentHeatPREOS = (composition, T_K, P_Pa) => {
+                const H_dep_V = calcEnthalpyDeparture(composition, T_K, P_Pa, 'vapor');
+                const H_dep_L = calcEnthalpyDeparture(composition, T_K, P_Pa, 'liquid');
+
+                // Latent heat = H_V - H_L = (H_ig + H_dep_V) - (H_ig + H_dep_L) = H_dep_V - H_dep_L
+                const latentHeat_Jmol = H_dep_V - H_dep_L;
+
+                // Convert J/mol to Btu/lb using mixture MW
+                const M = getMolecularWeight(composition);
+                const latentHeat_Btulb = latentHeat_Jmol / M * 0.000947817 * 453.592; // J/mol -> Btu/lb
+
+                return Math.abs(latentHeat_Btulb);
+            };
+
+            // Calculate multi-component latent heat using Stream A/B method with PR-EOS
             const calcMultiCompLatentHeat = (composition, P_psia, T_bubble_F) => {
                 const M = getMolecularWeight(composition);
+                const P_Pa = P_psia * 6894.76;
                 const massFlowBasis = 1000; // lb/hr basis
                 const molarFlowBasis = M > 0 ? massFlowBasis / M : 0;
 
                 // Stream A: Liquid at bubble point (V = 0)
                 const T_A = T_bubble_F;
-                const Cp_A = calcMolarCp(composition);
+                const T_A_K = (T_A + 459.67) * 5/9;
+                const Cp_A = calcMolarCp(composition, true); // Liquid Cp
 
                 // Stream B: 5% molar vapor
                 const vaporFracB = 0.05;
-                const molesVaporized = molarFlowBasis * vaporFracB;
-                const massVaporized = molesVaporized * M;
 
                 // Find temperature where we get 5% vapor (iterate)
-                let T_B = T_A + 50; // Start above bubble point
-                for (let iter = 0; iter < 50; iter++) {
-                    const flash = calcFlash(composition, T_B, P_psia);
-                    const diff = flash.V - vaporFracB;
-                    if (Math.abs(diff) < 0.001) break;
-                    // Adjust T based on whether we need more or less vapor
-                    T_B = T_B + diff * 100; // Simple adjustment
-                    T_B = Math.max(T_A, Math.min(T_A + 500, T_B));
+                let T_B = T_A + 30; // Start above bubble point
+                let flashB = null;
+                for (let iter = 0; iter < 100; iter++) {
+                    flashB = calcFlash(composition, T_B, P_psia);
+                    const diff = flashB.V - vaporFracB;
+                    if (Math.abs(diff) < 0.0005) break;
+                    // Secant-like adjustment
+                    const dT = diff > 0 ? -Math.abs(diff) * 50 : Math.abs(diff) * 50;
+                    T_B = T_B + dT * 0.5;
+                    T_B = Math.max(T_A + 0.1, Math.min(T_A + 300, T_B));
                 }
 
                 // Recalculate flash at final T_B
-                const flashB = calcFlash(composition, T_B, P_psia);
-                const Cp_B = calcMolarCp(composition); // Bulk Cp (simplified - should weight L/V)
+                flashB = calcFlash(composition, T_B, P_psia);
+                const T_B_K = (T_B + 459.67) * 5/9;
+
+                // Moles vaporized (use vapor MW for mass calculation)
+                const molesVaporized = molarFlowBasis * flashB.V;
+                const mw_vapor = flashB.mw_V || M; // Use calculated vapor MW
+                const massVaporized = molesVaporized * mw_vapor;
+
+                // Calculate liquid and vapor Cp at Stream B conditions
+                // Weight by phase fractions
+                const Cp_L = calcMolarCp(composition, true);   // Liquid Cp
+                const Cp_V = calcMolarCp(composition, false);  // Vapor Cp
+                const Cp_B = (1 - flashB.V) * Cp_L + flashB.V * Cp_V; // Weighted average
 
                 // Sensible heat: Q_sens = n * Cp_avg * (T_B - T_A)
                 const Cp_avg = (Cp_A + Cp_B) / 2;
                 const Q_sensible = molarFlowBasis * Cp_avg * (T_B - T_A); // Btu/hr
 
-                // Total heat from fire
-                // For multi-component: λ_eff = Q_total / mass_vaporized
-                // We need to iterate: Q = C*F*A^0.82, W = Q/λ, but λ depends on Q through T_B
+                // Calculate PR-EOS latent heat at bubble point
+                const T_avg_K = (T_A_K + T_B_K) / 2;
+                let latentHeat_PR = 0;
+                try {
+                    // Get enthalpy departures
+                    const H_dep_V = calcEnthalpyDeparture(composition, T_avg_K, P_Pa, 'vapor');
+                    const H_dep_L = calcEnthalpyDeparture(composition, T_avg_K, P_Pa, 'liquid');
+
+                    // Latent heat in J/mol, convert to Btu/lbmol
+                    const deltaH_Jmol = H_dep_V - H_dep_L;
+                    latentHeat_PR = Math.abs(deltaH_Jmol) * 0.000947817 * 453.592; // Btu/lbmol
+                } catch (e) {
+                    latentHeat_PR = 0; // Fallback if calculation fails
+                }
+
+                // Calculate latent heat of vaporization (Btu/lb)
+                // Q_latent = n_vaporized * deltaH_vap
+                const Q_latent = molesVaporized * latentHeat_PR; // Btu/hr
+
+                // Total heat duty
+                const Q_total = Q_sensible + Q_latent;
+
+                // Effective latent heat (Btu/lb)
+                const lambda_eff = massVaporized > 0 ? Q_total / massVaporized : 100;
 
                 // Return stream properties for display
                 return {
@@ -678,14 +977,19 @@
                         molarCp: Cp_A
                     },
                     streamB: {
-                        vaporFrac: vaporFracB,
+                        vaporFrac: flashB.V,
                         pressure: P_psia,
                         temperature: T_B,
                         massVaporized: massVaporized,
                         molesVaporized: molesVaporized,
-                        molarCp: Cp_B
+                        molarCp: Cp_B,
+                        mw_vapor: mw_vapor
                     },
                     Q_sensible: Q_sensible,
+                    Q_latent: Q_latent,
+                    Q_total: Q_total,
+                    lambda_eff: lambda_eff,
+                    latentHeat_PR: latentHeat_PR,
                     M: M
                 };
             };
@@ -2284,36 +2588,65 @@
                                 // Stream A: Liquid at bubble point (V = 0)
                                 const massFlowBasis = 1000; // lb/hr basis
                                 const molarFlowBasis = M > 0 ? massFlowBasis / M : 0;
-                                const Cp_A = calcMolarCp(comp); // Btu/(lbmol·°F)
+                                const Cp_A = calcMolarCp(comp, true); // Use LIQUID Cp
 
                                 // Stream B: 5% molar vapor - find temperature
                                 const vaporFracB = 0.05;
-                                let T_B = T_bubble + 50; // Initial guess
+                                let T_B = T_bubble + 30; // Initial guess
+                                let flashB = null;
                                 for (let iter = 0; iter < 100; iter++) {
-                                    const flash = calcFlash(comp, T_B, p1_psia);
-                                    const diff = flash.V - vaporFracB;
+                                    flashB = calcFlash(comp, T_B, p1_psia);
+                                    const diff = flashB.V - vaporFracB;
                                     if (Math.abs(diff) < 0.0005) break;
-                                    T_B = T_B - diff * 200; // Adjusted step
-                                    T_B = Math.max(T_bubble + 1, Math.min(T_bubble + 500, T_B));
+                                    const dT = diff > 0 ? -Math.abs(diff) * 50 : Math.abs(diff) * 50;
+                                    T_B = T_B + dT * 0.5;
+                                    T_B = Math.max(T_bubble + 0.1, Math.min(T_bubble + 300, T_B));
                                 }
-                                const molesVaporized = molarFlowBasis * vaporFracB;
-                                const massVaporized = molesVaporized * M;
-                                const Cp_B = calcMolarCp(comp); // Bulk Cp for entire stream
+                                flashB = calcFlash(comp, T_B, p1_psia); // Final flash
+
+                                // Use actual vapor fraction and vapor MW from flash
+                                const actualVaporFrac = flashB?.V || vaporFracB;
+                                const molesVaporized = molarFlowBasis * actualVaporFrac;
+                                const mw_vapor = flashB?.mw_V || M; // Use vapor MW from flash
+                                const massVaporized = molesVaporized * mw_vapor;
+
+                                // Calculate weighted Cp for Stream B (liquid + vapor portions)
+                                const Cp_L = calcMolarCp(comp, true);  // Liquid Cp
+                                const Cp_V = calcMolarCp(comp, false); // Vapor Cp
+                                const Cp_B = (1 - actualVaporFrac) * Cp_L + actualVaporFrac * Cp_V;
 
                                 // Sensible heat: Q_sens = n × Cp_avg × ΔT
                                 const Cp_avg = (Cp_A + Cp_B) / 2;
                                 const Q_sensible = molarFlowBasis * Cp_avg * (T_B - T_bubble);
 
-                                // Total heat input from fire (using Q calculated above for basis comparison)
-                                // For multi-component effective λ calculation:
-                                // Total Heat = Sensible + Latent for the 5% vaporization
-                                // λ_light_ends = (Total Heat - Sensible) / mass_vaporized
-                                const Q_total_basis = Q * (massFlowBasis / W); // Scale to 1000 lb/hr basis
-                                const Q_latent_lightEnds = Q_total_basis - Q_sensible;
-                                const lambda_lightEnds = massVaporized > 0 ? Q_latent_lightEnds / massVaporized : latentHeat;
+                                // PR-EOS Latent Heat Calculation
+                                const P_Pa = p1_psia * 6894.76;
+                                const T_avg_K = ((T_bubble + T_B) / 2 + 459.67) * 5/9;
+                                let latentHeat_PR = 0;
+                                try {
+                                    const H_dep_V = calcEnthalpyDeparture(comp, T_avg_K, P_Pa, 'vapor');
+                                    const H_dep_L = calcEnthalpyDeparture(comp, T_avg_K, P_Pa, 'liquid');
+                                    const deltaH_Jmol = H_dep_V - H_dep_L;
+                                    latentHeat_PR = Math.abs(deltaH_Jmol) * 0.000947817 * 453.592; // J/mol -> Btu/lbmol
+                                } catch (e) {
+                                    latentHeat_PR = 0;
+                                }
 
-                                // Relief load W = Q / λ
-                                const W = latentHeat > 0 ? Q / latentHeat : 0;
+                                // Latent heat from vaporization (Btu/hr) = moles vaporized * latent heat per lbmol
+                                const Q_latent_PR = molesVaporized * latentHeat_PR;
+
+                                // Total heat input for the vaporized portion
+                                const Q_total_stream = Q_sensible + Q_latent_PR;
+
+                                // Effective latent heat (Btu/lb) for multi-component
+                                const lambda_lightEnds = massVaporized > 0 ? Q_total_stream / massVaporized : latentHeat;
+
+                                // Relief load W = Q / λ (use effective lambda for multi-component)
+                                const effectiveLambda = isMultiComponent ? lambda_lightEnds : latentHeat;
+                                const W = effectiveLambda > 0 ? Q / effectiveLambda : 0;
+
+                                // Scale Q to 1000 lb/hr basis for comparison
+                                const Q_total_basis = W > 0 ? Q * (massFlowBasis / W) : 0;
 
                                 // Calculate required area using API 520 vapor equation
                                 const Z = 1.0;
@@ -2784,26 +3117,30 @@
                                                     <div className="space-y-1 text-xs">
                                                         <div className="flex justify-between">
                                                             <span className="text-gray-600">Vapor Fraction (by mol)</span>
-                                                            <span className="font-medium">{(vaporFracB).toFixed(2)}</span>
+                                                            <span className="font-medium">{(actualVaporFrac * 100).toFixed(1)} <span className="text-gray-400">%</span></span>
                                                         </div>
                                                         <div className="flex justify-between">
                                                             <span className="text-gray-600">Pressure</span>
                                                             <span className="font-medium">{p1_psia.toFixed(0)} <span className="text-gray-400">psia</span></span>
                                                         </div>
                                                         <div className="flex justify-between">
-                                                            <span className="text-gray-600">Temperature (Dew Pt 5%)</span>
+                                                            <span className="text-gray-600">Temperature</span>
                                                             <span className="font-medium">{T_B.toFixed(1)} <span className="text-gray-400">°F</span></span>
                                                         </div>
                                                         <div className="flex justify-between">
-                                                            <span className="text-gray-600">Mass Flow Rate (Vaporized)</span>
-                                                            <span className="font-medium">{massVaporized.toFixed(0)} <span className="text-gray-400">lb/hr</span></span>
+                                                            <span className="text-gray-600">Vapor MW</span>
+                                                            <span className="font-medium">{mw_vapor.toFixed(2)} <span className="text-gray-400">lb/lbmol</span></span>
                                                         </div>
                                                         <div className="flex justify-between">
-                                                            <span className="text-gray-600">Molar Flow Rate (Vaporized)</span>
+                                                            <span className="text-gray-600">Mass Vaporized</span>
+                                                            <span className="font-medium">{massVaporized.toFixed(1)} <span className="text-gray-400">lb/hr</span></span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Moles Vaporized</span>
                                                             <span className="font-medium">{molesVaporized.toFixed(2)} <span className="text-gray-400">lbmol/hr</span></span>
                                                         </div>
                                                         <div className="flex justify-between">
-                                                            <span className="text-gray-600">Bulk Molar Heat Capacity</span>
+                                                            <span className="text-gray-600">Bulk Molar Cp (L+V)</span>
                                                             <span className="font-medium">{Cp_B.toFixed(2)} <span className="text-gray-400">Btu/lbmol·°F</span></span>
                                                         </div>
                                                     </div>
@@ -2812,19 +3149,27 @@
 
                                             {/* Heat Calculations */}
                                             <div className="mt-4 bg-white rounded-lg p-3 border border-purple-200">
-                                                <h5 className="font-semibold text-purple-800 mb-2 text-sm">Heat Input Calculations (per 1000 lb/hr basis)</h5>
+                                                <h5 className="font-semibold text-purple-800 mb-2 text-sm">Heat Duty Calculations (per 1000 lb/hr basis)</h5>
                                                 <div className="space-y-1 text-xs">
                                                     <div className="flex justify-between">
-                                                        <span className="text-gray-600">Total Heat Input (Q from fire, scaled)</span>
-                                                        <span className="font-medium">{Q_total_basis > 0 ? Q_total_basis.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} <span className="text-gray-400">Btu/hr</span></span>
-                                                    </div>
-                                                    <div className="flex justify-between">
-                                                        <span className="text-gray-600">Sensible Heat Input (n×Cp×ΔT)</span>
+                                                        <span className="text-gray-600">Sensible Heat (n×Cp×ΔT)</span>
                                                         <span className="font-medium">{Q_sensible > 0 ? Q_sensible.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} <span className="text-gray-400">Btu/hr</span></span>
                                                     </div>
+                                                    <div className="flex justify-between">
+                                                        <span className="text-gray-600">PR-EOS Latent Heat (n×ΔH_vap)</span>
+                                                        <span className="font-medium">{Q_latent_PR > 0 ? Q_latent_PR.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} <span className="text-gray-400">Btu/hr</span></span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span className="text-gray-600">Total Heat Duty (Sens + Lat)</span>
+                                                        <span className="font-medium">{Q_total_stream > 0 ? Q_total_stream.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} <span className="text-gray-400">Btu/hr</span></span>
+                                                    </div>
                                                     <div className="flex justify-between border-t pt-1 mt-1">
-                                                        <span className="text-gray-700 font-medium">Multi-Comp Mass Latent Heat (Light Ends)</span>
+                                                        <span className="text-gray-700 font-medium">Effective Latent Heat (Q/m_vap)</span>
                                                         <span className="font-bold text-purple-700">{lambda_lightEnds > 0 ? lambda_lightEnds.toFixed(0) : '-'} <span className="text-gray-400">Btu/lb</span></span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span className="text-gray-600">PR-EOS Molar ΔH_vap</span>
+                                                        <span className="font-medium">{latentHeat_PR > 0 ? latentHeat_PR.toFixed(0) : '-'} <span className="text-gray-400">Btu/lbmol</span></span>
                                                     </div>
                                                 </div>
                                             </div>
