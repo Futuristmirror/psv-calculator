@@ -649,7 +649,9 @@
                     ...prev,
                     [scenarioId]: {
                         ...prev[scenarioId],
-                        [field]: field.includes('unit') ? value : (parseFloat(value) || 0)
+                        [field]: field.includes('unit') || field.includes('tag') || field.includes('type') || field.includes('size')
+                            ? value
+                            : (typeof value === 'boolean' ? value : (parseFloat(value) || 0))
                     }
                 }));
             };
@@ -1580,10 +1582,7 @@
                                                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                                                 }`}
                                             >
-                                                <span className="inline-flex items-center space-x-1">
-                                                    <span className="text-xs bg-gray-200 px-1.5 py-0.5 rounded font-bold">{s.label}</span>
-                                                    <span>{s.name.split(' ')[0]}</span>
-                                                </span>
+                                                {s.name}
                                             </button>
                                         ))}
                                     </div>
