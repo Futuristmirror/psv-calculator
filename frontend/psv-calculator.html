@@ -1587,8 +1587,11 @@
                     };
 
                     // Helper functions
+                    // Footer is at pageHeight - 12 (line) and pageHeight - 8 (text)
+                    // Reserve 25mm above footer to prevent overlap
+                    const footerMargin = 25;
                     const checkNewPage = (requiredSpace = 30) => {
-                        if (yPos + requiredSpace > pageHeight - 20) {
+                        if (yPos + requiredSpace > pageHeight - footerMargin) {
                             doc.addPage();
                             yPos = margin;
                             return true;
@@ -1808,6 +1811,9 @@
                     const scenarioRowH = 8;
 
                     scenarioOrder.forEach(scenId => {
+                        // Check for page break before drawing each scenario row
+                        checkNewPage(scenarioRowH + 5);
+
                         const sel = scenarioSelections[scenId];
                         const def = SCENARIO_DEFS[scenId];
                         const sr = results.scenarioResults?.[scenId];
@@ -1995,7 +2001,18 @@
                         const sr = results.scenarioResults?.[scenId];
                         const isNotCalculated = def?.notCalculated;
 
-                        checkNewPage(50);
+                        // Use the notes from the text box or default text
+                        let notes;
+                        if (isNotCalculated) {
+                            notes = `This scenario is not analyzed in this calculator. If applicable to your system, consult with a process engineer for proper evaluation.`;
+                        } else {
+                            notes = sel?.notes || `No notes provided for ${def?.name || scenId}.`;
+                        }
+                        const noteLines = doc.splitTextToSize(notes, pageWidth - 2*margin - 4);
+                        const boxH = Math.max(15, noteLines.length * 4 + 6);
+
+                        // Check for page break with actual required space (header + box + spacing)
+                        checkNewPage(boxH + 15);
 
                         let credible = 'NO';
                         if (isNotCalculated) {
@@ -2019,16 +2036,6 @@
                         doc.text(`Credible:  ${credible}`, margin + 55, yPos);
 
                         yPos += 4;
-
-                        // Use the notes from the text box or default text
-                        let notes;
-                        if (isNotCalculated) {
-                            notes = `This scenario is not analyzed in this calculator. If applicable to your system, consult with a process engineer for proper evaluation.`;
-                        } else {
-                            notes = sel?.notes || `No notes provided for ${def?.name || scenId}.`;
-                        }
-                        const noteLines = doc.splitTextToSize(notes, pageWidth - 2*margin - 4);
-                        const boxH = Math.max(15, noteLines.length * 4 + 6);
 
                         if (isNotCalculated) {
                             doc.setFillColor(240, 240, 240);
@@ -2187,7 +2194,7 @@
                                     theme: 'plain',
                                     bodyStyles: { fontSize: 8 },
                                     columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 50, halign: 'right' } },
-                                    margin: { left: margin, right: margin },
+                                    margin: { left: margin, right: margin, bottom: footerMargin },
                                     tableWidth: 130
                                 });
                                 yPos = doc.lastAutoTable.finalY + 5;
@@ -2219,7 +2226,7 @@
                                     theme: 'plain',
                                     bodyStyles: { fontSize: 8 },
                                     columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 50, halign: 'right' } },
-                                    margin: { left: margin, right: margin },
+                                    margin: { left: margin, right: margin, bottom: footerMargin },
                                     tableWidth: 130
                                 });
                                 yPos = doc.lastAutoTable.finalY + 5;
@@ -2252,7 +2259,7 @@
                                     theme: 'plain',
                                     bodyStyles: { fontSize: 8 },
                                     columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 50, halign: 'right' } },
-                                    margin: { left: margin, right: margin },
+                                    margin: { left: margin, right: margin, bottom: footerMargin },
                                     tableWidth: 130
                                 });
                                 yPos = doc.lastAutoTable.finalY + 5;
@@ -2355,7 +2362,7 @@
                                     theme: 'plain',
                                     bodyStyles: { fontSize: 8 },
                                     columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 50, halign: 'right' } },
-                                    margin: { left: margin, right: margin },
+                                    margin: { left: margin, right: margin, bottom: footerMargin },
                                     tableWidth: 130
                                 });
                                 yPos = doc.lastAutoTable.finalY + 5;
@@ -2383,7 +2390,7 @@
                                     theme: 'plain',
                                     bodyStyles: { fontSize: 8 },
                                     columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 50, halign: 'right' } },
-                                    margin: { left: margin, right: margin },
+                                    margin: { left: margin, right: margin, bottom: footerMargin },
                                     tableWidth: 130
                                 });
                                 yPos = doc.lastAutoTable.finalY + 5;
@@ -2409,7 +2416,7 @@
                                     theme: 'plain',
                                     bodyStyles: { fontSize: 8 },
                                     columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 50, halign: 'right' } },
-                                    margin: { left: margin, right: margin },
+                                    margin: { left: margin, right: margin, bottom: footerMargin },
                                     tableWidth: 130
                                 });
                                 yPos = doc.lastAutoTable.finalY + 5;
@@ -2445,7 +2452,7 @@
                                         0: { cellWidth: 80 },
                                         1: { cellWidth: 50, halign: 'right' }
                                     },
-                                    margin: { left: margin, right: margin },
+                                    margin: { left: margin, right: margin, bottom: footerMargin },
                                     tableWidth: 130
                                 });
                                 yPos = doc.lastAutoTable.finalY + 8;
@@ -2470,13 +2477,14 @@
                                     theme: 'grid',
                                     headStyles: { fillColor: [200, 220, 240], textColor: [0, 0, 0], fontStyle: 'bold', fontSize: 8 },
                                     bodyStyles: { fontSize: 8 },
-                                    margin: { left: margin, right: margin },
+                                    margin: { left: margin, right: margin, bottom: footerMargin },
                                     tableWidth: 90
                                 });
                                 yPos = doc.lastAutoTable.finalY + 8;
                             }
 
                             // ========== SIZING METHODOLOGY (AFTER COMPOSITION) ==========
+                            checkNewPage(25);
                             doc.setFont('helvetica', 'bold');
                             doc.setFontSize(8);
                             doc.text('Sizing Methodology', margin, yPos);
