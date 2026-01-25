@@ -1228,6 +1228,107 @@
                 includeAppendix: true
             });
 
+            // Payment state
+            const [paymentStatus, setPaymentStatus] = useState({
+                hasPaid: false,
+                sessionId: null,
+                reportsGenerated: 0, // Track free reports used
+                stripeConfigured: false,
+            });
+            const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+
+            // Check for payment success on page load
+            useEffect(() => {
+                const urlParams = new URLSearchParams(window.location.search);
+                const payment = urlParams.get('payment');
+                const sessionId = urlParams.get('session_id');
+
+                // Load reports count from localStorage
+                const savedReportsCount = parseInt(localStorage.getItem('psv_reports_generated') || '0');
+                setPaymentStatus(prev => ({ ...prev, reportsGenerated: savedReportsCount }));
+
+                // Check if Stripe is configured
+                if (API_BASE) {
+                    fetch(`${API_BASE}/payment-status`)
+                        .then(res => res.json())
+                        .then(data => {
+                            setPaymentStatus(prev => ({ ...prev, stripeConfigured: data.stripe_configured }));
+                        })
+                        .catch(() => {});
+                }
+
+                if (payment === 'success' && sessionId) {
+                    // Verify payment with backend
+                    verifyPayment(sessionId);
+                    // Clean up URL
+                    window.history.replaceState({}, '', window.location.pathname);
+                } else if (payment === 'cancelled') {
+                    alert('Payment was cancelled. You can try again when ready.');
+                    window.history.replaceState({}, '', window.location.pathname);
+                }
+            }, []);
+
+            // Verify payment with backend
+            const verifyPayment = async (sessionId) => {
+                if (!API_BASE) return;
+                try {
+                    const response = await fetch(`${API_BASE}/verify-payment/${sessionId}`);
+                    const data = await response.json();
+                    if (data.valid) {
+                        setPaymentStatus(prev => ({
+                            ...prev,
+                            hasPaid: true,
+                            sessionId: sessionId,
+                        }));
+                        alert('Payment successful! You can now generate your report.');
+                    }
+                } catch (error) {
+                    console.error('Error verifying payment:', error);
+                }
+            };
+
+            // Initiate Stripe checkout
+            const initiateCheckout = async (product = 'standard_report') => {
+                if (!API_BASE) {
+                    alert('Payment system not configured. API_BASE must be set.');
+                    return;
+                }
+
+                setIsProcessingPayment(true);
+                try {
+                    const currentUrl = window.location.href.split('?')[0];
+                    const response = await fetch(`${API_BASE}/create-checkout-session`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            product: product,
+                            success_url: `${currentUrl}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+                            cancel_url: `${currentUrl}?payment=cancelled`,
+                        }),
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.detail || 'Failed to create checkout session');
+                    }
+
+                    const data = await response.json();
+                    // Redirect to Stripe Checkout
+                    window.location.href = data.checkout_url;
+                } catch (error) {
+                    console.error('Checkout error:', error);
+                    alert(`Checkout error: ${error.message}`);
+                    setIsProcessingPayment(false);
+                }
+            };
+
+            // Track report generation
+            const trackReportGeneration = () => {
+                const newCount = paymentStatus.reportsGenerated + 1;
+                localStorage.setItem('psv_reports_generated', newCount.toString());
+                setPaymentStatus(prev => ({ ...prev, reportsGenerated: newCount }));
+            };
+
             // Get list of applicable scenarios (all applicable, including noCalc)
             const applicableScenarios = SCENARIOS.filter(s => scenarioSelections[s.id]?.applicable);
             // Scenarios that need calculations (exclude noCalc scenarios like hydraulic thermal)
@@ -5395,16 +5496,36 @@ Because the two cases above do not apply, a detailed analysis has not been perfo
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                     <div className="bg-white/10 rounded-lg p-4">
                                         <p className="font-semibold text-lg">Standard Report</p>
-                                        <p className="text-sm text-blue-200 mb-2">First report FREE!</p>
+                                        <p className="text-sm text-blue-200 mb-2">
+                                            {paymentStatus.reportsGenerated === 0 ? 'First report FREE!' : `${paymentStatus.reportsGenerated} report(s) generated`}
+                                        </p>
                                         <p className="text-3xl font-bold my-2">$99<span className="text-sm font-normal">/each after</span></p>
                                         <ul className="text-sm text-blue-100 space-y-1 mb-4">
                                             <li>✓ Full calculation package</li>
                                             <li>✓ Auto-generated PDF</li>
                                             <li>✓ All inputs documented</li>
                                         </ul>
-                                        <button onClick={generateReport} className="w-full py-2 bg-white text-blue-600 rounded-lg font-medium hover:bg-blue-50 transition">
-                                            Generate Report
-                                        </button>
+                                        {/* Smart button: Free first report, then require payment */}
+                                        {paymentStatus.reportsGenerated === 0 || paymentStatus.hasPaid || !paymentStatus.stripeConfigured ? (
+                                            <button
+                                                onClick={() => {
+                                                    generateReport();
+                                                    trackReportGeneration();
+                                                    if (paymentStatus.hasPaid) {
+                                                        setPaymentStatus(prev => ({ ...prev, hasPaid: false, sessionId: null }));
+                                                    }
+                                                }}
+                                                className="w-full py-2 bg-white text-blue-600 rounded-lg font-medium hover:bg-blue-50 transition">
+                                                {paymentStatus.reportsGenerated === 0 ? 'Generate FREE Report' : 'Generate Report'}
+                                            </button>
+                                        ) : (
+                                            <button
+                                                onClick={() => initiateCheckout('standard_report')}
+                                                disabled={isProcessingPayment}
+                                                className="w-full py-2 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition disabled:opacity-50">
+                                                {isProcessingPayment ? 'Processing...' : 'Pay $99 & Generate'}
+                                            </button>
+                                        )}
                                     </div>
 
                                     <div className="bg-white/10 rounded-lg p-4 ring-2 ring-yellow-400">
@@ -5421,13 +5542,15 @@ Because the two cases above do not apply, a detailed analysis has not been perfo
                                         </ul>
                                         <button
                                            onClick={() => {
-                                               // TODO: Replace with actual Stripe checkout URL
-                                               // window.location.href = 'https://checkout.stripe.com/your-checkout-link';
-                                               alert('Stripe checkout coming soon! For now, please email caseym@franceng.com');
-                                               window.location.href = 'mailto:caseym@franceng.com?subject=PSV%20PE-Reviewed%20Report%20Request&body=I%20would%20like%20to%20request%20a%20PE-Reviewed%20PSV%20Sizing%20Report.';
+                                               if (paymentStatus.stripeConfigured) {
+                                                   initiateCheckout('pe_reviewed');
+                                               } else {
+                                                   window.location.href = 'mailto:caseym@franceng.com?subject=PSV%20PE-Reviewed%20Report%20Request&body=I%20would%20like%20to%20request%20a%20PE-Reviewed%20PSV%20Sizing%20Report.';
+                                               }
                                            }}
-                                           className="w-full py-2 bg-yellow-400 text-blue-900 rounded-lg font-medium hover:bg-yellow-300 transition">
-                                            Request Quote
+                                           disabled={isProcessingPayment}
+                                           className="w-full py-2 bg-yellow-400 text-blue-900 rounded-lg font-medium hover:bg-yellow-300 transition disabled:opacity-50">
+                                            {isProcessingPayment ? 'Processing...' : (paymentStatus.stripeConfigured ? 'Pay $499' : 'Request Quote')}
                                         </button>
                                     </div>
 

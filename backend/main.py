@@ -6,14 +6,28 @@ REST API for PSV sizing calculations using Peng-Robinson EOS
 Author: Franc Engineering
 """
 
-from fastapi import FastAPI, HTTPException
+import os
+import stripe
+from fastapi import FastAPI, HTTPException, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 import uvicorn
+import hashlib
+import time
 
 from thermo_engine import get_properties, COMPONENTS, PRESETS
 from psv_sizing import calculate_psv_size, wetted_area_horizontal_vessel, wetted_area_vertical_vessel
+
+# Stripe Configuration
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+# In-memory store for payment sessions (use Redis/DB in production)
+# Maps session_id -> { status, email, created_at, product }
+payment_sessions: Dict[str, Dict] = {}
 
 app = FastAPI(
     title="Franc Engineering PSV Calculator API",
@@ -250,6 +264,183 @@ async def list_orifices():
             }
             for o in API_526_ORIFICES
         ]
+    }
+
+
+# Stripe Payment Models
+class CreateCheckoutRequest(BaseModel):
+    product: str = Field(..., description="Product type: 'standard_report' or 'pe_reviewed'")
+    email: Optional[str] = Field(None, description="Customer email for receipt")
+    success_url: Optional[str] = Field(None, description="URL to redirect after successful payment")
+    cancel_url: Optional[str] = Field(None, description="URL to redirect if payment cancelled")
+
+
+class CheckoutResponse(BaseModel):
+    checkout_url: str
+    session_id: str
+
+
+# Product pricing configuration
+PRODUCTS = {
+    "standard_report": {
+        "name": "PSV Calculator - Standard Report",
+        "description": "Full PDF calculation package with all inputs documented",
+        "price_cents": 9900,  # $99.00
+    },
+    "pe_reviewed": {
+        "name": "PSV Calculator - PE-Reviewed Report",
+        "description": "Engineer stamped report with PE (TX/CO) review, 48-72hr delivery",
+        "price_cents": 49900,  # $499.00
+    }
+}
+
+
+@app.post("/create-checkout-session")
+async def create_checkout_session(request: CreateCheckoutRequest):
+    """Create a Stripe Checkout session for payment"""
+    if not stripe.api_key:
+        raise HTTPException(status_code=500, detail="Stripe not configured. Set STRIPE_SECRET_KEY environment variable.")
+
+    product = PRODUCTS.get(request.product)
+    if not product:
+        raise HTTPException(status_code=400, detail=f"Invalid product. Choose from: {list(PRODUCTS.keys())}")
+
+    try:
+        # Build success/cancel URLs
+        success_url = request.success_url or f"{FRONTEND_URL}?payment=success&session_id={{CHECKOUT_SESSION_ID}}"
+        cancel_url = request.cancel_url or f"{FRONTEND_URL}?payment=cancelled"
+
+        # Create Stripe Checkout Session
+        checkout_session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{
+                "price_data": {
+                    "currency": "usd",
+                    "product_data": {
+                        "name": product["name"],
+                        "description": product["description"],
+                    },
+                    "unit_amount": product["price_cents"],
+                },
+                "quantity": 1,
+            }],
+            mode="payment",
+            success_url=success_url,
+            cancel_url=cancel_url,
+            customer_email=request.email,
+            metadata={
+                "product": request.product,
+            }
+        )
+
+        # Store session for verification
+        payment_sessions[checkout_session.id] = {
+            "status": "pending",
+            "product": request.product,
+            "email": request.email,
+            "created_at": time.time(),
+        }
+
+        return CheckoutResponse(
+            checkout_url=checkout_session.url,
+            session_id=checkout_session.id
+        )
+
+    except stripe.error.StripeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/webhook/stripe")
+async def stripe_webhook(request: Request, stripe_signature: str = Header(None)):
+    """Handle Stripe webhook events"""
+    if not STRIPE_WEBHOOK_SECRET:
+        # In development, accept all webhooks
+        payload = await request.json()
+        event = stripe.Event.construct_from(payload, stripe.api_key)
+    else:
+        # In production, verify webhook signature
+        payload = await request.body()
+        try:
+            event = stripe.Webhook.construct_event(
+                payload, stripe_signature, STRIPE_WEBHOOK_SECRET
+            )
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid payload")
+        except stripe.error.SignatureVerificationError:
+            raise HTTPException(status_code=400, detail="Invalid signature")
+
+    # Handle the event
+    if event["type"] == "checkout.session.completed":
+        session = event["data"]["object"]
+        session_id = session["id"]
+
+        # Update payment status
+        if session_id in payment_sessions:
+            payment_sessions[session_id]["status"] = "completed"
+            payment_sessions[session_id]["customer_email"] = session.get("customer_email")
+        else:
+            # Session wasn't tracked, add it now
+            payment_sessions[session_id] = {
+                "status": "completed",
+                "product": session.get("metadata", {}).get("product", "standard_report"),
+                "email": session.get("customer_email"),
+                "created_at": time.time(),
+            }
+
+        print(f"Payment completed for session: {session_id}")
+
+    elif event["type"] == "checkout.session.expired":
+        session = event["data"]["object"]
+        session_id = session["id"]
+        if session_id in payment_sessions:
+            payment_sessions[session_id]["status"] = "expired"
+
+    return {"status": "ok"}
+
+
+@app.get("/verify-payment/{session_id}")
+async def verify_payment(session_id: str):
+    """Verify if a payment session has been completed"""
+    # First check our local cache
+    if session_id in payment_sessions:
+        session_data = payment_sessions[session_id]
+        return {
+            "valid": session_data["status"] == "completed",
+            "status": session_data["status"],
+            "product": session_data.get("product"),
+        }
+
+    # If not in cache, check with Stripe directly
+    if not stripe.api_key:
+        raise HTTPException(status_code=500, detail="Stripe not configured")
+
+    try:
+        session = stripe.checkout.Session.retrieve(session_id)
+        is_paid = session.payment_status == "paid"
+
+        # Cache the result
+        payment_sessions[session_id] = {
+            "status": "completed" if is_paid else session.status,
+            "product": session.metadata.get("product", "standard_report"),
+            "email": session.customer_email,
+            "created_at": time.time(),
+        }
+
+        return {
+            "valid": is_paid,
+            "status": session.payment_status,
+            "product": session.metadata.get("product"),
+        }
+    except stripe.error.StripeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/payment-status")
+async def payment_status():
+    """Check if Stripe is configured (for frontend to know if payments are enabled)"""
+    return {
+        "stripe_configured": bool(stripe.api_key),
+        "products": PRODUCTS if stripe.api_key else {},
     }
 
 

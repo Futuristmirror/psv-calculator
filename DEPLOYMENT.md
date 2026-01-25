@@ -108,6 +108,82 @@ For production, consider adding:
 
 ---
 
+## Stripe Payment Integration
+
+To enable payments for report generation:
+
+### 1. Create Stripe Account
+
+1. Sign up at [stripe.com](https://stripe.com)
+2. Go to Developers → API Keys
+3. Copy your **Secret key** (starts with `sk_test_` or `sk_live_`)
+
+### 2. Set Environment Variables
+
+Add these to your Railway/Render deployment:
+
+```bash
+STRIPE_SECRET_KEY=sk_test_your_key_here
+STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
+FRONTEND_URL=https://your-domain.com/psv-calculator.html
+```
+
+### 3. Configure Stripe Webhook
+
+1. In Stripe Dashboard, go to Developers → Webhooks
+2. Add endpoint: `https://your-api.railway.app/webhook/stripe`
+3. Select events: `checkout.session.completed`, `checkout.session.expired`
+4. Copy the signing secret to `STRIPE_WEBHOOK_SECRET`
+
+### 4. Update Frontend
+
+Set `API_BASE` in your frontend to point to your backend:
+
+```javascript
+const API_BASE = 'https://your-api.railway.app';
+```
+
+### 5. Test the Flow
+
+1. First report is FREE (tracked in browser localStorage)
+2. After first report, users see "Pay $99 & Generate" button
+3. Clicking redirects to Stripe Checkout
+4. After successful payment, user is redirected back and can download PDF
+
+### Pricing Configuration
+
+Edit pricing in `backend/main.py`:
+
+```python
+PRODUCTS = {
+    "standard_report": {
+        "name": "PSV Calculator - Standard Report",
+        "price_cents": 9900,  # $99.00
+    },
+    "pe_reviewed": {
+        "name": "PSV Calculator - PE-Reviewed Report",
+        "price_cents": 49900,  # $499.00
+    }
+}
+```
+
+### Local Testing with Stripe CLI
+
+```bash
+# Install Stripe CLI
+brew install stripe/stripe-cli/stripe
+
+# Login
+stripe login
+
+# Forward webhooks to local server
+stripe listen --forward-to localhost:8000/webhook/stripe
+
+# Copy the webhook signing secret it prints
+```
+
+---
+
 ## API Endpoints
 
 | Endpoint | Method | Description |
@@ -120,6 +196,10 @@ For production, consider adding:
 | `/size-psv` | POST | Calculate PSV sizing |
 | `/orifices` | GET | List API 526 orifices |
 | `/docs` | GET | Swagger documentation |
+| `/payment-status` | GET | Check if Stripe is configured |
+| `/create-checkout-session` | POST | Create Stripe checkout session |
+| `/verify-payment/{session_id}` | GET | Verify payment status |
+| `/webhook/stripe` | POST | Stripe webhook handler |
 
 ---
 
