@@ -29,9 +29,35 @@
         .file-upload { border: 2px dashed #d1d5db; transition: all 0.2s ease; }
         .file-upload:hover { border-color: #2563eb; background-color: #f8fafc; }
         .file-upload.has-file { border-color: #22c55e; background-color: #f0fdf4; }
+
+        /* Dark Mode Styles */
+        .dark-mode { color: #e5e7eb; }
+        .dark-mode .bg-white { background-color: #1f2937 !important; }
+        .dark-mode .bg-gray-50 { background-color: #111827 !important; }
+        .dark-mode .bg-gray-100 { background-color: #374151 !important; }
+        .dark-mode .bg-gray-200 { background-color: #4b5563 !important; }
+        .dark-mode .text-gray-900 { color: #f9fafb !important; }
+        .dark-mode .text-gray-800 { color: #f3f4f6 !important; }
+        .dark-mode .text-gray-700 { color: #e5e7eb !important; }
+        .dark-mode .text-gray-600 { color: #d1d5db !important; }
+        .dark-mode .text-gray-500 { color: #9ca3af !important; }
+        .dark-mode .border-gray-200 { border-color: #4b5563 !important; }
+        .dark-mode .border-gray-300 { border-color: #6b7280 !important; }
+        .dark-mode input, .dark-mode select, .dark-mode textarea {
+            background-color: #374151 !important;
+            color: #f3f4f6 !important;
+            border-color: #4b5563 !important;
+        }
+        .dark-mode input::placeholder { color: #9ca3af !important; }
+        .dark-mode .scenario-card { background-color: #1f2937; border-color: #4b5563; }
+        .dark-mode .scenario-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+        .dark-mode .scenario-card.selected { border-color: #3b82f6; background-color: #1e3a5f; }
+        .dark-mode .shadow-lg { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.2) !important; }
+        .dark-mode .rounded-xl { background-color: #1f2937; }
+        body.dark { background-color: #111827 !important; }
     </style>
 </head>
-<body class="bg-gray-50 min-h-screen">
+<body class="bg-gray-50 min-h-screen" id="app-body">
     <div id="root"></div>
 
     <script type="text/babel">
@@ -339,6 +365,7 @@
         // Main App Component
         function PSVCalculator() {
             const [step, setStep] = useState(1);
+            const [darkMode, setDarkMode] = useState(false);
 
             // Step 1: Device Info
             const [deviceInfo, setDeviceInfo] = useState({
@@ -1205,6 +1232,12 @@
                 }));
             };
 
+            // Dark mode effect - toggle body class
+            useEffect(() => {
+                document.body.classList.toggle('dark', darkMode);
+                document.getElementById('app-body')?.classList.toggle('bg-gray-900', darkMode);
+            }, [darkMode]);
+
             // Update scenario-specific conditions
             const updateScenarioCondition = (scenarioId, field, value) => {
                 setScenarioConditions(prev => ({
@@ -1502,7 +1535,7 @@
                 doc.setFont('helvetica', 'normal');
                 doc.text(`Controlling Scenario: ${controllingName}`, pageWidth / 2, yPos, { align: 'center' });
                 yPos += 8;
-                doc.text(`Required Area: ${results.maxRequiredArea.toFixed(4)} in² | Rated Area: ${results.ratedArea.toFixed(3)} in²`, pageWidth / 2, yPos, { align: 'center' });
+                doc.text(`Required Area: ${results.maxRequiredArea.toFixed(2)} in² | Rated Area: ${results.ratedArea.toFixed(3)} in²`, pageWidth / 2, yPos, { align: 'center' });
 
                 // Footer on cover
                 doc.setTextColor(128, 128, 128);
@@ -1590,7 +1623,7 @@
                             'Yes',
                             s.name,
                             r.requiredFlow.toFixed(1) + ' / ' + r.ratedFlow.toFixed(0),
-                            r.requiredArea.toFixed(4),
+                            r.requiredArea.toFixed(2),
                             r.requiredArea <= results.ratedArea ? 'Adequate' : 'Undersized'
                         ];
                     } else {
@@ -1636,7 +1669,7 @@
                     head: [['Parameter', 'Value']],
                     body: [
                         ['Controlling Scenario', controllingName],
-                        ['Required Relief Area', `${results.maxRequiredArea.toFixed(4)} in²`],
+                        ['Required Relief Area', `${results.maxRequiredArea.toFixed(2)} in²`],
                         ['Installed Orifice', results.selectedOrifice.letter],
                         ['Installed Rated Area', `${results.ratedArea.toFixed(3)} in²`],
                         ['Utilization', `${((results.maxRequiredArea / results.ratedArea) * 100).toFixed(1)}%`],
@@ -1727,17 +1760,26 @@
             const STEP_LABELS = ['Device', 'Scenario', 'Fluid', 'Calcs', 'Results'];
 
             return (
-                <div className="max-w-4xl mx-auto p-4 sm:p-6">
+                <div className={`max-w-4xl mx-auto p-4 sm:p-6 ${darkMode ? 'dark-mode' : ''}`}>
                     {/* Header */}
                     <div className="flex justify-between items-start mb-8">
                         <div>
-                            <h1 className="text-2xl sm:text-3xl font-bold franc-blue mb-2">PSV Sizing Calculator</h1>
-                            <p className="text-gray-600">Pressure Safety Valve Sizing per API 520/521</p>
-                            <p className="text-sm text-gray-500 mt-1">Franc Engineering | franceng.com</p>
+                            <h1 className={`text-2xl sm:text-3xl font-bold ${darkMode ? 'text-blue-400' : 'franc-blue'} mb-2`}>PSV Sizing Calculator</h1>
+                            <p className={darkMode ? 'text-gray-300' : 'text-gray-600'}>Pressure Safety Valve Sizing per API 520/521</p>
+                            <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Franc Engineering | franceng.com</p>
                         </div>
-                        {/* Device Info - Upper Right */}
-                        {step > 1 && (deviceInfo.tag || deviceInfo.pid_number || deviceInfo.facility_name) && (
-                            <div className="text-right text-sm bg-gray-100 rounded-lg p-3">
+                        <div className="flex items-start gap-3">
+                            {/* Dark Mode Toggle */}
+                            <button
+                                onClick={() => setDarkMode(!darkMode)}
+                                className={`p-2 rounded-lg transition ${darkMode ? 'bg-gray-700 text-yellow-400 hover:bg-gray-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                                title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                            >
+                                {darkMode ? '☀️' : '🌙'}
+                            </button>
+                            {/* Device Info - Upper Right */}
+                            {step > 1 && (deviceInfo.tag || deviceInfo.pid_number || deviceInfo.facility_name) && (
+                            <div className={`text-right text-sm rounded-lg p-3 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
                                 {deviceInfo.tag && (
                                     <div><span className="text-gray-500">Relief Device Tag:</span> <span className="font-semibold">{deviceInfo.tag}</span></div>
                                 )}
@@ -1748,7 +1790,8 @@
                                     <div><span className="text-gray-500">Facility:</span> <span className="font-semibold">{deviceInfo.facility_name}</span></div>
                                 )}
                             </div>
-                        )}
+                            )}
+                        </div>
                     </div>
 
                     {/* Progress Steps */}
@@ -2266,7 +2309,7 @@ Because the two cases above do not apply, a detailed analysis has not been perfo
                                                         </div>
                                                         <div className="flex justify-between">
                                                             <span className="text-sm text-gray-600">Relief Area</span>
-                                                            <span className="text-sm font-medium">{requiredArea > 0 ? requiredArea.toFixed(4) : '-'} <span className="text-xs text-gray-400">in²</span></span>
+                                                            <span className="text-sm font-medium">{requiredArea > 0 ? requiredArea.toFixed(2) : '-'} <span className="text-xs text-gray-400">in²</span></span>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -2727,7 +2770,7 @@ Because the two cases above do not apply, a detailed analysis has not been perfo
                                                         </div>
                                                         <div className="flex justify-between">
                                                             <span className="text-sm text-gray-600">Relief Area</span>
-                                                            <span className="text-sm font-medium">{requiredArea > 0 ? requiredArea.toFixed(4) : '-'} <span className="text-xs text-gray-400">in²</span></span>
+                                                            <span className="text-sm font-medium">{requiredArea > 0 ? requiredArea.toFixed(2) : '-'} <span className="text-xs text-gray-400">in²</span></span>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -3300,7 +3343,7 @@ Because the two cases above do not apply, a detailed analysis has not been perfo
                                                         </div>
                                                         <div className="flex justify-between">
                                                             <span className="text-sm text-gray-600">Relief Area</span>
-                                                            <span className="text-sm font-medium">{requiredArea > 0 ? requiredArea.toFixed(4) : '-'} <span className="text-xs text-gray-400">in²</span></span>
+                                                            <span className="text-sm font-medium">{requiredArea > 0 ? requiredArea.toFixed(2) : '-'} <span className="text-xs text-gray-400">in²</span></span>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -3548,7 +3591,7 @@ Because the two cases above do not apply, a detailed analysis has not been perfo
                                                     </div>
                                                     <div className="flex justify-between">
                                                         <span className="text-sm text-gray-600">Relief Area</span>
-                                                        <span className="text-sm font-medium">{requiredArea > 0 ? requiredArea.toFixed(4) : '-'} <span className="text-xs text-gray-400">in²</span></span>
+                                                        <span className="text-sm font-medium">{requiredArea > 0 ? requiredArea.toFixed(2) : '-'} <span className="text-xs text-gray-400">in²</span></span>
                                                     </div>
                                                 </div>
                                             </div>
@@ -3878,7 +3921,7 @@ Because the two cases above do not apply, a detailed analysis has not been perfo
                                                 {results.controllingScenario ? results.scenarioResults[results.controllingScenario]?.name : '-'}
                                             </p>
                                             <p className="text-lg text-gray-700">
-                                                Required Area: <span className="font-semibold">{results.maxRequiredArea > 0 ? results.maxRequiredArea.toFixed(4) : '-'}</span> in²
+                                                Required Area: <span className="font-semibold">{results.maxRequiredArea > 0 ? results.maxRequiredArea.toFixed(2) : '-'}</span> in²
                                             </p>
                                         </div>
                                         <div className="text-center border-l border-blue-200">
@@ -3947,7 +3990,7 @@ Because the two cases above do not apply, a detailed analysis has not been perfo
                                                             }
                                                         </td>
                                                         <td className="border border-gray-300 px-3 py-2 text-right">
-                                                            {sr && !sr.placeholder && sr.requiredArea > 0 ? sr.requiredArea.toFixed(4) : '-'}
+                                                            {sr && !sr.placeholder && sr.requiredArea > 0 ? sr.requiredArea.toFixed(2) : '-'}
                                                         </td>
                                                         <td className="border border-gray-300 px-3 py-2 text-center">
                                                             {sr && !sr.placeholder ? (
@@ -4035,7 +4078,10 @@ Because the two cases above do not apply, a detailed analysis has not been perfo
                                         <p className="text-3xl font-bold my-2">$499</p>
                                         <ul className="text-sm text-blue-100 space-y-1 mb-4">
                                             <li>✓ Everything in Standard</li>
-                                            <li>✓ PE stamp (TX/CO)</li>
+                                            <li>✓ PE (TX/CO) Review</li>
+                                            <li>✓ More components</li>
+                                            <li>✓ More scenarios</li>
+                                            <li>✓ Unlimited report generations</li>
                                             <li>✓ 48-72 hour delivery</li>
                                         </ul>
                                         <button
