@@ -365,7 +365,7 @@
         // Main App Component
         function PSVCalculator() {
             const [step, setStep] = useState(1);
-            const [darkMode, setDarkMode] = useState(false);
+            const [darkMode, setDarkMode] = useState(true);
 
             // Step 1: Device Info
             const [deviceInfo, setDeviceInfo] = useState({
@@ -467,8 +467,8 @@
                 },
                 cv_failure: {
                     valve_tag: '',
-                    cv: 100, // Full-Open Valve Flow Coefficient
-                    xt: 0.7, // Pressure Drop Ratio Factor
+                    cv: 5, // Full-Open Valve Flow Coefficient
+                    xt: 0.9, // Pressure Drop Ratio Factor
                     upstream_pressure: 800, // psig (P1)
                     upstream_temp: 138, // °F (T1)
                     // Bypass valve options
@@ -1305,9 +1305,11 @@
                     const cond = scenarioConditions.fire_unwetted;
                     const p1_psia = setP * (1 + FIRE_OVERPRESSURE) + AMBIENT_PRESSURE;
                     const M = getMolecularWeight(comp);
+                    const Pcrit = getCriticalPressure(comp);
                     const T1 = calcRelievingTemp(p1_psia, cond.normal_op_pressure, cond.normal_op_temp);
                     const vesselAreas = calcVesselAreas({ ...vesselDetails, max_liquid_level: 0 });
-                    const qRelief = calcFireUnwettedReliefLoad(M, p1_psia, vesselAreas.adjustedUnwetted, MAX_WALL_TEMP, T1);
+                    const unwettedArea = vesselAreas.adjustedUnwetted;
+                    const qRelief = calcFireUnwettedReliefLoad(M, p1_psia, unwettedArea, MAX_WALL_TEMP, T1);
                     const T1_R = T1 + 459.67;
                     const k = getSpecificHeatRatio(comp);
                     const C = getAPI520_C(k);
@@ -1320,7 +1322,12 @@
                     scenarioResults.fire_unwetted = {
                         applicable: true, label: '1B', name: 'Fire-Unwetted',
                         requiredFlow: qRelief, ratedFlow: ratedLoad, requiredArea, ratedArea,
-                        adequate: ratedArea >= requiredArea
+                        adequate: ratedArea >= requiredArea,
+                        // Additional data for PDF
+                        wettedArea: unwettedArea, relievingPressure: p1_psia,
+                        relievingTempF: T1, molecularWeight: M,
+                        specificHeatRatio: k, cCoefficient: C,
+                        criticalPressure: Pcrit
                     };
                     if (requiredArea > maxRequiredArea) { maxRequiredArea = requiredArea; controllingScenario = 'fire_unwetted'; }
                 }
@@ -1348,12 +1355,15 @@
                     scenarioResults.blocked_vapor = {
                         applicable: true, label: '2A', name: 'Blocked Outlet',
                         requiredFlow: qRelief, ratedFlow: ratedLoad, requiredArea, ratedArea,
-                        adequate: ratedArea >= requiredArea
+                        adequate: ratedArea >= requiredArea,
+                        // Additional data for PDF
+                        relievingPressure: p1_psia, relievingTempF: T1,
+                        molecularWeight: M, specificHeatRatio: k, cCoefficient: C
                     };
                     if (requiredArea > maxRequiredArea) { maxRequiredArea = requiredArea; controllingScenario = 'blocked_vapor'; }
                 }
 
-                // Fire Wetted (1A)
+                // Fire Wetted (1A) - Multi-component calculation matching UI
                 if (scenarioSelections.fire_wetted?.applicable) {
                     const comp = compositions.fire_wetted || {};
                     const cond = scenarioConditions.fire_wetted;
@@ -1362,8 +1372,13 @@
                     const M = getMolecularWeight(comp);
                     const k = getSpecificHeatRatio(comp);
                     const C = getAPI520_C(k);
-                    const T1 = cond.normal_op_temp;
-                    const T1_R = T1 + 459.67;
+
+                    // Determine if single or multi-component
+                    const compEntries = Object.entries(comp).filter(([_, val]) => val > 0);
+                    const isMultiComponent = compEntries.length > 1;
+
+                    // Calculate bubble point temperature
+                    const T_bubble = compEntries.length > 0 ? calcBubblePoint(comp, p1_psia) : cond.normal_op_temp;
 
                     // Heat absorption: checked = 21000, unchecked = 34500
                     const heatConst = cond.prompt_firefighting ? 21000 : 34500;
@@ -1372,19 +1387,72 @@
                     const wettedArea = wettedAreas.wetted;
                     const Q = heatConst * F * Math.pow(wettedArea, 0.82);
                     const latentHeat = getLatentHeat(comp);
-                    const W = latentHeat > 0 ? Q / latentHeat : 0;
 
-                    const requiredArea = W > 0 && M > 0 && p1_psia > 0
-                        ? (W * Math.sqrt(T1_R * 1.0)) / (C * 0.975 * p1_psia * 1.0 * 1.0 * Math.sqrt(M))
+                    // Multi-component latent heat calculation
+                    let effectiveLambda = latentHeat;
+                    let T_B = T_bubble;
+                    let mw_vapor = M;
+
+                    if (isMultiComponent) {
+                        const massFlowBasis = 1000;
+                        const molarFlowBasis = M > 0 ? massFlowBasis / M : 0;
+
+                        // Flash to 5% vapor
+                        const vaporFracB = 0.05;
+                        T_B = T_bubble + 30;
+                        let flashB = null;
+                        for (let iter = 0; iter < 100; iter++) {
+                            flashB = calcFlash(comp, T_B, p1_psia);
+                            const diff = flashB.V - vaporFracB;
+                            if (Math.abs(diff) < 0.0005) break;
+                            const dT = diff > 0 ? -Math.abs(diff) * 50 : Math.abs(diff) * 50;
+                            T_B = T_B + dT * 0.5;
+                            T_B = Math.max(T_bubble + 0.1, Math.min(T_bubble + 300, T_B));
+                        }
+                        flashB = calcFlash(comp, T_B, p1_psia);
+
+                        const actualVaporFrac = flashB?.V || vaporFracB;
+                        const molesVaporized = molarFlowBasis * actualVaporFrac;
+                        mw_vapor = flashB?.mw_V || M;
+                        const massVaporized = molesVaporized * mw_vapor;
+
+                        // PR-EOS Latent Heat
+                        const P_Pa = p1_psia * 6894.76;
+                        const T_avg_K = ((T_bubble + T_B) / 2 + 459.67) * 5/9;
+                        let latentHeat_PR = 0;
+                        try {
+                            const H_dep_V = calcEnthalpyDeparture(comp, T_avg_K, P_Pa, 'vapor');
+                            const H_dep_L = calcEnthalpyDeparture(comp, T_avg_K, P_Pa, 'liquid');
+                            const deltaH_Jmol = H_dep_V - H_dep_L;
+                            latentHeat_PR = Math.abs(deltaH_Jmol) * 0.000947817 * 453.592;
+                        } catch (e) {
+                            latentHeat_PR = 0;
+                        }
+
+                        const Q_latent_PR = molesVaporized * latentHeat_PR;
+                        const lambda_lightEnds_calc = massVaporized > 0 ? Q_latent_PR / massVaporized : latentHeat;
+                        const safetyFactor = cond.latent_heat_safety_factor ? 0.90 : 1.0;
+                        effectiveLambda = lambda_lightEnds_calc * safetyFactor;
+                    }
+
+                    const W = effectiveLambda > 0 ? Q / effectiveLambda : 0;
+                    const T1_R = T_B + 459.67;
+
+                    const requiredArea = W > 0 && mw_vapor > 0 && p1_psia > 0
+                        ? (W * Math.sqrt(T1_R * 1.0)) / (C * 0.975 * p1_psia * 1.0 * 1.0 * Math.sqrt(mw_vapor))
                         : 0;
-                    const ratedLoad = ratedArea > 0 && M > 0 && p1_psia > 0
-                        ? (ratedArea * C * 0.975 * p1_psia * 1.0 * 1.0 * Math.sqrt(M)) / Math.sqrt(T1_R * 1.0)
+                    const ratedLoad = ratedArea > 0 && mw_vapor > 0 && p1_psia > 0
+                        ? (ratedArea * C * 0.975 * p1_psia * 1.0 * 1.0 * Math.sqrt(mw_vapor)) / Math.sqrt(T1_R * 1.0)
                         : 0;
 
                     scenarioResults.fire_wetted = {
                         applicable: true, label: '1A', name: '1A - Fire-Wetted',
                         requiredFlow: W, ratedFlow: ratedLoad, requiredArea, ratedArea,
-                        adequate: ratedArea >= requiredArea
+                        adequate: ratedArea >= requiredArea,
+                        // Store additional data for PDF
+                        wettedArea, heatAbsorptionConstant: heatConst, heatInput: Q,
+                        latentHeat: effectiveLambda, relievingPressure: p1_psia,
+                        relievingTempF: T_B, molecularWeight: mw_vapor
                     };
                     if (requiredArea > maxRequiredArea) { maxRequiredArea = requiredArea; controllingScenario = 'fire_wetted'; }
                 }
@@ -1448,7 +1516,10 @@
                     scenarioResults.cv_failure = {
                         applicable: true, label: '3', name: '3 - CV Failure - Vapor',
                         requiredFlow: W, ratedFlow: ratedLoad, requiredArea, ratedArea,
-                        adequate: ratedArea >= requiredArea
+                        adequate: ratedArea >= requiredArea,
+                        // Additional data for PDF
+                        relievingPressure: P2_psia, relievingTempF: cond.upstream_temp,
+                        molecularWeight: M, specificHeatRatio: k, cCoefficient: C, Z: Z
                     };
                     if (requiredArea > maxRequiredArea) { maxRequiredArea = requiredArea; controllingScenario = 'cv_failure'; }
                 }
@@ -1496,8 +1567,15 @@
                         fire_wetted: { id: '1A', name: 'Fire - Wetted', fullName: '1A - Fire-Wetted (Liquid Boil up)' },
                         fire_unwetted: { id: '1B', name: 'Fire - Unwetted', fullName: '1B - Fire-Unwetted (Vapor)' },
                         blocked_vapor: { id: '2A', name: 'Blocked Outlet', fullName: '2A - Blocked Outlet - Vapor' },
+                        overfilling: { id: '2B', name: 'Overfilling', fullName: '2B - Overfilling', notCalculated: true },
                         cv_failure: { id: '3', name: 'CV Failure', fullName: '3 - CV Failure - Vapor' },
-                        hydraulic_thermal: { id: '4', name: 'Hydraulic Expansion', fullName: '4 - Hydraulic Thermal Expansion' }
+                        hydraulic_thermal: { id: '4', name: 'Hydraulic Expansion', fullName: '4 - Hydraulic Thermal Expansion' },
+                        loss_of_cooling: { id: '5', name: 'Loss of Cooling', fullName: '5 - Loss of Cooling', notCalculated: true },
+                        abnormal_heat: { id: '6', name: 'Abnormal Heat Input', fullName: '6 - Abnormal Heat Input', notCalculated: true },
+                        tube_rupture: { id: '7', name: 'Exchanger Tube Rupture', fullName: '7 - Exchanger Tube Rupture', notCalculated: true },
+                        compressor_equalization: { id: '8', name: 'Compressor Equalization', fullName: '8 - Compressor Equalization', notCalculated: true },
+                        power_failure: { id: '9', name: 'Power Failure', fullName: '9 - Power Failure', notCalculated: true },
+                        other: { id: '10', name: 'Other', fullName: '10 - Other', notCalculated: true }
                     };
 
                     const controllingDef = SCENARIO_DEFS[results.controllingScenario] || { name: results.controllingScenario };
@@ -1725,17 +1803,20 @@
 
                     yPos += headerH;
 
-                    // Build scenario rows with IDs in scenario name (Order: 1A, 1B, 2A, 3, 4)
-                    const scenarioOrder = ['fire_wetted', 'fire_unwetted', 'blocked_vapor', 'cv_failure', 'hydraulic_thermal'];
+                    // Build scenario rows with IDs in scenario name (Order: 1A, 1B, 2A, 2B, 3, 4, 5-10)
+                    const scenarioOrder = ['fire_wetted', 'fire_unwetted', 'blocked_vapor', 'overfilling', 'cv_failure', 'hydraulic_thermal', 'loss_of_cooling', 'abnormal_heat', 'tube_rupture', 'compressor_equalization', 'power_failure', 'other'];
                     const scenarioRowH = 8;
 
                     scenarioOrder.forEach(scenId => {
                         const sel = scenarioSelections[scenId];
                         const def = SCENARIO_DEFS[scenId];
                         const sr = results.scenarioResults?.[scenId];
+                        const isNotCalculated = def?.notCalculated;
 
                         let credible = 'NO';
-                        if (sel?.applicable && sr?.applicable) {
+                        if (isNotCalculated) {
+                            credible = 'Unknown';
+                        } else if (sel?.applicable && sr?.applicable) {
                             credible = 'YES';
                         } else if (sel?.applicable && sel?.notes) {
                             credible = 'SEE COMMENTS';
@@ -1744,39 +1825,66 @@
                         // Add ID to scenario name (e.g., "1A Fire - Wetted")
                         const scenarioNameWithId = `${def?.id} ${def?.name || scenId}`;
 
-                        const rowData = [
-                            credible,
-                            scenarioNameWithId,
-                            sr?.applicable ? formatNumber(sr.requiredFlow, 0) : '-',
-                            sr?.applicable ? formatNumber(sr.ratedFlow, 0) : '-',
-                            sr?.applicable ? sr.requiredArea?.toFixed(3) : '-',
-                            sr?.applicable ? (selectedOrifice?.area?.toFixed(3) || '-') : '-'
-                        ];
-
                         colX = margin;
                         doc.setFont('helvetica', 'normal');
                         doc.setFontSize(7);
 
-                        rowData.forEach((cell, i) => {
-                            if (i === 0) {
-                                if (cell === 'YES') {
-                                    doc.setFillColor(198, 239, 206);
-                                } else if (cell === 'SEE COMMENTS') {
-                                    doc.setFillColor(255, 235, 156);
-                                } else {
-                                    doc.setFillColor(255, 199, 206);
-                                }
-                            } else if (sr?.applicable) {
-                                doc.setFillColor(198, 239, 206);
-                            } else {
-                                doc.setFillColor(230, 230, 230);
-                            }
+                        if (isNotCalculated) {
+                            // "Not Calculated" scenarios - gray row with merged cells
+                            // Credible cell
+                            doc.setFillColor(200, 200, 200);
+                            doc.setTextColor(100, 100, 100);
+                            doc.rect(colX, yPos, colWidths[0], scenarioRowH, 'F');
+                            doc.rect(colX, yPos, colWidths[0], scenarioRowH);
+                            doc.text(credible, colX + colWidths[0]/2, yPos + scenarioRowH/2 + 1.5, { align: 'center' });
+                            colX += colWidths[0];
 
-                            doc.rect(colX, yPos, colWidths[i], scenarioRowH, 'F');
-                            doc.rect(colX, yPos, colWidths[i], scenarioRowH);
-                            doc.text(cell.toString(), colX + colWidths[i]/2, yPos + scenarioRowH/2 + 1.5, { align: 'center' });
-                            colX += colWidths[i];
-                        });
+                            // Scenario name cell
+                            doc.rect(colX, yPos, colWidths[1], scenarioRowH, 'F');
+                            doc.rect(colX, yPos, colWidths[1], scenarioRowH);
+                            doc.text(scenarioNameWithId, colX + colWidths[1]/2, yPos + scenarioRowH/2 + 1.5, { align: 'center' });
+                            colX += colWidths[1];
+
+                            // Merged "Not Calculated" cells (span remaining 4 columns)
+                            const mergedWidth = colWidths[2] + colWidths[3] + colWidths[4] + colWidths[5];
+                            doc.rect(colX, yPos, mergedWidth, scenarioRowH, 'F');
+                            doc.rect(colX, yPos, mergedWidth, scenarioRowH);
+                            doc.setFont('helvetica', 'italic');
+                            doc.text('Not Calculated', colX + mergedWidth/2, yPos + scenarioRowH/2 + 1.5, { align: 'center' });
+
+                            doc.setTextColor(0, 0, 0);
+                        } else {
+                            // Regular calculated scenarios
+                            const rowData = [
+                                credible,
+                                scenarioNameWithId,
+                                sr?.applicable ? formatNumber(sr.requiredFlow, 0) : '-',
+                                sr?.applicable ? formatNumber(sr.ratedFlow, 0) : '-',
+                                sr?.applicable ? sr.requiredArea?.toFixed(3) : '-',
+                                sr?.applicable ? (selectedOrifice?.area?.toFixed(3) || '-') : '-'
+                            ];
+
+                            rowData.forEach((cell, i) => {
+                                if (i === 0) {
+                                    if (cell === 'YES') {
+                                        doc.setFillColor(198, 239, 206);
+                                    } else if (cell === 'SEE COMMENTS') {
+                                        doc.setFillColor(255, 235, 156);
+                                    } else {
+                                        doc.setFillColor(255, 199, 206);
+                                    }
+                                } else if (sr?.applicable) {
+                                    doc.setFillColor(198, 239, 206);
+                                } else {
+                                    doc.setFillColor(230, 230, 230);
+                                }
+
+                                doc.rect(colX, yPos, colWidths[i], scenarioRowH, 'F');
+                                doc.rect(colX, yPos, colWidths[i], scenarioRowH);
+                                doc.text(cell.toString(), colX + colWidths[i]/2, yPos + scenarioRowH/2 + 1.5, { align: 'center' });
+                                colX += colWidths[i];
+                            });
+                        }
 
                         yPos += scenarioRowH;
                     });
@@ -1856,11 +1964,14 @@
                         const sel = scenarioSelections[scenId];
                         const def = SCENARIO_DEFS[scenId];
                         const sr = results.scenarioResults?.[scenId];
+                        const isNotCalculated = def?.notCalculated;
 
                         checkNewPage(50);
 
                         let credible = 'NO';
-                        if (sel?.applicable && sr?.applicable) {
+                        if (isNotCalculated) {
+                            credible = 'Unknown';
+                        } else if (sel?.applicable && sr?.applicable) {
                             credible = 'YES';
                         } else if (sel?.applicable && sel?.notes) {
                             credible = 'SEE COMMENTS';
@@ -1869,22 +1980,44 @@
                         // Include scenario ID in header
                         doc.setFont('helvetica', 'bolditalic');
                         doc.setFontSize(9);
+                        if (isNotCalculated) {
+                            doc.setTextColor(100, 100, 100);
+                        } else {
+                            doc.setTextColor(0, 0, 0);
+                        }
                         doc.text(`${def?.id} - ${def?.name || scenId}`, margin, yPos);
                         doc.setFont('helvetica', 'normal');
                         doc.text(`Credible:  ${credible}`, margin + 55, yPos);
 
                         yPos += 4;
 
-                        // Use the notes from the text box (includes auto-generated for hydraulic)
-                        const notes = sel?.notes || `No notes provided for ${def?.name || scenId}.`;
+                        // Use the notes from the text box or default text
+                        let notes;
+                        if (isNotCalculated) {
+                            notes = `This scenario is not analyzed in this calculator. If applicable to your system, consult with a process engineer for proper evaluation.`;
+                        } else {
+                            notes = sel?.notes || `No notes provided for ${def?.name || scenId}.`;
+                        }
                         const noteLines = doc.splitTextToSize(notes, pageWidth - 2*margin - 4);
                         const boxH = Math.max(15, noteLines.length * 4 + 6);
 
+                        if (isNotCalculated) {
+                            doc.setFillColor(240, 240, 240);
+                            doc.rect(margin, yPos, pageWidth - 2*margin, boxH, 'F');
+                        }
                         doc.rect(margin, yPos, pageWidth - 2*margin, boxH);
                         doc.setFontSize(8);
+                        if (isNotCalculated) {
+                            doc.setTextColor(100, 100, 100);
+                            doc.setFont('helvetica', 'italic');
+                        } else {
+                            doc.setTextColor(0, 0, 0);
+                            doc.setFont('helvetica', 'normal');
+                        }
                         noteLines.forEach((line, i) => {
                             doc.text(line, margin + 2, yPos + 4 + i * 4);
                         });
+                        doc.setTextColor(0, 0, 0);
 
                         yPos += boxH + 8;
                     });
@@ -1975,11 +2108,11 @@
 
                             yPos += summaryBoxHeight + 4;
 
-                            // Utilization bar
+                            // Sizing % bar
                             if (utilization > 0) {
                                 doc.setFontSize(8);
                                 doc.setFont('helvetica', 'normal');
-                                doc.text('Utilization:', margin, yPos + 4);
+                                doc.text('Sizing %:', margin, yPos + 4);
                                 const barX = margin + 25;
                                 const barWidth = 60;
                                 const barHeight = 5;
@@ -2001,21 +2134,116 @@
                             doc.text('Sizing Calculation', margin, yPos);
                             yPos += 5;
 
-                            // Build calculation details based on scenario type
+                            // Build calculation details based on scenario type - matching online calc layout
+                            const cond = scenarioConditions[scenId] || {};
+
+                            // Operating Conditions section (common to most scenarios)
+                            checkNewPage(30);
+                            doc.setFont('helvetica', 'bold');
+                            doc.setFontSize(8);
+                            doc.setFillColor(220, 255, 220);
+                            doc.rect(margin, yPos, pageWidth - 2*margin, 6, 'F');
+                            doc.rect(margin, yPos, pageWidth - 2*margin, 6);
+                            doc.text('Operating Conditions (Inputs)', margin + 2, yPos + 4);
+                            yPos += 8;
+
+                            const opConditions = [
+                                ['Normal Operating Pressure (Pn)', `${cond.normal_op_pressure || '-'} psig`],
+                                ['Normal Operating Temperature (Tn)', `${cond.normal_op_temp || '-'} °F`]
+                            ];
+                            doc.autoTable({
+                                startY: yPos,
+                                body: opConditions,
+                                theme: 'plain',
+                                bodyStyles: { fontSize: 8 },
+                                columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 50, halign: 'right' } },
+                                margin: { left: margin, right: margin },
+                                tableWidth: 130
+                            });
+                            yPos = doc.lastAutoTable.finalY + 5;
+
+                            // Vessel Details section (for fire scenarios)
+                            if (scenId === 'fire_wetted' || scenId === 'fire_unwetted') {
+                                checkNewPage(40);
+                                doc.setFont('helvetica', 'bold');
+                                doc.setFontSize(8);
+                                doc.setFillColor(245, 245, 245);
+                                doc.rect(margin, yPos, pageWidth - 2*margin, 6, 'F');
+                                doc.rect(margin, yPos, pageWidth - 2*margin, 6);
+                                doc.text('Vessel Details', margin + 2, yPos + 4);
+                                yPos += 8;
+
+                                const vesselData = [
+                                    ['Equipment Tag', vesselDetails.equipment_tag || '-'],
+                                    ['Orientation', vesselDetails.orientation === 'horizontal' ? 'Horizontal' : 'Vertical'],
+                                    ['Head Type', vesselDetails.head_type?.replace('_', ' ').toUpperCase() || '-'],
+                                    ['Inner Diameter (ID)', `${vesselDetails.inner_diameter || '-'} in`],
+                                    ['Seam-to-Seam Length', `${vesselDetails.seam_to_seam || '-'} ft`],
+                                    ['Height Above Grade', `${vesselDetails.height_above_grade || '-'} ft`],
+                                    ['Max Liquid Operating Level', `${scenId === 'fire_wetted' ? (cond.liquid_level || 0) : 0} %`]
+                                ];
+                                doc.autoTable({
+                                    startY: yPos,
+                                    body: vesselData,
+                                    theme: 'plain',
+                                    bodyStyles: { fontSize: 8 },
+                                    columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 50, halign: 'right' } },
+                                    margin: { left: margin, right: margin },
+                                    tableWidth: 130
+                                });
+                                yPos = doc.lastAutoTable.finalY + 5;
+                            }
+
+                            // Scenario-specific calculation details
                             let calcDetails = [];
 
                             if (scenId === 'fire_wetted') {
-                                calcDetails = [
-                                    ['Wetted Surface Area (A)', `${sr.wettedArea?.toFixed(1) || '-'} ft²`],
-                                    ['Heat Absorption Constant (C₁)', sr.heatAbsorptionConstant ? `${formatNumber(sr.heatAbsorptionConstant, 0)}` : '21,000'],
-                                    ['Environment Factor (F)', '1.0'],
-                                    ['Total Heat Absorption (Q)', `${formatNumber(sr.heatInput, 0)} Btu/hr`],
-                                    ['Latent Heat of Vaporization (λ)', `${sr.latentHeat?.toFixed(0) || '-'} Btu/lb`],
-                                    ['Relief Load (W = Q/λ)', `${formatNumber(sr.requiredFlow, 0)} lb/hr`],
+                                // Latent Heat Calculation section
+                                checkNewPage(40);
+                                doc.setFont('helvetica', 'bold');
+                                doc.setFontSize(8);
+                                doc.setFillColor(255, 220, 220);
+                                doc.rect(margin, yPos, pageWidth - 2*margin, 6, 'F');
+                                doc.rect(margin, yPos, pageWidth - 2*margin, 6);
+                                doc.text('Latent Heat Calculation', margin + 2, yPos + 4);
+                                yPos += 8;
+
+                                const latentHeatData = [
+                                    ['Ambient Pressure', '14.7 psia'],
                                     ['Relief Device Set Pressure', `${deviceInfo.set_pressure || '-'} psig`],
                                     ['Allowable Overpressure', '21%'],
-                                    ['Relieving Pressure (P₁)', `${sr.relievingPressure?.toFixed(1) || '-'} psia`],
-                                    ['Relieving Temperature', `${sr.relievingTempF?.toFixed(0) || '-'} °F`],
+                                    ['Absolute Relieving Pressure (P1)', `${sr.relievingPressure?.toFixed(1) || '-'} psia`],
+                                    ['Relieving Temperature', `${sr.relievingTempF?.toFixed(0) || '-'} °F`]
+                                ];
+                                doc.autoTable({
+                                    startY: yPos,
+                                    body: latentHeatData,
+                                    theme: 'plain',
+                                    bodyStyles: { fontSize: 8 },
+                                    columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 50, halign: 'right' } },
+                                    margin: { left: margin, right: margin },
+                                    tableWidth: 130
+                                });
+                                yPos = doc.lastAutoTable.finalY + 5;
+
+                                // Required Relieving Rate Calculation
+                                checkNewPage(50);
+                                doc.setFont('helvetica', 'bold');
+                                doc.setFontSize(8);
+                                doc.setFillColor(245, 245, 245);
+                                doc.rect(margin, yPos, pageWidth - 2*margin, 6, 'F');
+                                doc.rect(margin, yPos, pageWidth - 2*margin, 6);
+                                doc.text('Required Relieving Rate Calculation', margin + 2, yPos + 4);
+                                yPos += 8;
+
+                                calcDetails = [
+                                    ['Is the Vessel Insulated or Bare?', 'BARE'],
+                                    ['Environment Factor (F)', '1.00'],
+                                    ['Wetted Surface Area (Aws)', `${sr.wettedArea?.toFixed(1) || '-'} ft²`],
+                                    ['Heat Absorption Constant (C1 or C2)', sr.heatAbsorptionConstant ? `${formatNumber(sr.heatAbsorptionConstant, 0)}` : '34,500'],
+                                    ['Total Heat Absorption (Q)', `${formatNumber(sr.heatInput || 0, 0)} Btu/hr`],
+                                    ['Multi-Component Latent Heat', `${sr.latentHeat?.toFixed(0) || '-'} Btu/lb`],
+                                    ['Relief Load (W = Q/λ)', `${formatNumber(sr.requiredFlow, 0)} lb/hr`],
                                     ['Molecular Weight (M)', `${sr.molecularWeight?.toFixed(2) || '-'} lb/lbmol`],
                                     ['Compressibility Factor (Z)', '1.0'],
                                     ['Kd (Coefficient of Discharge)', '0.975'],
@@ -2023,32 +2251,152 @@
                                     ['Required Orifice Area', `${sr.requiredArea?.toFixed(4) || '-'} in²`]
                                 ];
                             } else if (scenId === 'fire_unwetted') {
+                                // Fire Unwetted calculation details
+                                checkNewPage(50);
+                                doc.setFont('helvetica', 'bold');
+                                doc.setFontSize(8);
+                                doc.setFillColor(245, 245, 245);
+                                doc.rect(margin, yPos, pageWidth - 2*margin, 6, 'F');
+                                doc.rect(margin, yPos, pageWidth - 2*margin, 6);
+                                doc.text('Required Relieving Rate Calculation', margin + 2, yPos + 4);
+                                yPos += 8;
+
                                 calcDetails = [
-                                    ['Unwetted Surface Area (A\')', `${sr.wettedArea?.toFixed(1) || '-'} ft²`],
-                                    ['Maximum Wall Temperature (Tw)', '1100 °F'],
-                                    ['Relief Load (W)', `${formatNumber(sr.requiredFlow, 0)} lb/hr`],
                                     ['Relief Device Set Pressure', `${deviceInfo.set_pressure || '-'} psig`],
                                     ['Allowable Overpressure', '21%'],
-                                    ['Relieving Pressure (P₁)', `${sr.relievingPressure?.toFixed(1) || '-'} psia`],
-                                    ['Relieving Temperature (T₁)', `${sr.relievingTempF?.toFixed(0) || '-'} °F`],
-                                    ['Molecular Weight (M)', `${sr.molecularWeight?.toFixed(2) || '-'} lb/lbmol`],
+                                    ['Relieving Pressure (p1)', `${(sr.relievingPressure - 14.69)?.toFixed(1) || '-'} psig`],
+                                    ['Critical Pressure (PCRIT)', `${sr.criticalPressure?.toFixed(0) || '-'} psia`],
+                                    ['Vapor Molecular Weight (M)', `${sr.molecularWeight?.toFixed(1) || '-'}`],
+                                    ['Maximum Wall Temperature (Tw)', '1,100 °F'],
+                                    ['Unwetted Surface Area (A\')', `${sr.wettedArea?.toFixed(1) || '-'} ft²`],
+                                    ['Relieving Temperature (T1)', `${sr.relievingTempF?.toFixed(0) || '-'} °F`],
+                                    ['Relief Load (qm,relief)', `${formatNumber(sr.requiredFlow, 0)} lb/hr`],
                                     ['Specific Heat Ratio (k)', `${sr.specificHeatRatio?.toFixed(3) || '-'}`],
                                     ['C Coefficient', `${sr.cCoefficient?.toFixed(1) || '315'}`],
-                                    ['Compressibility Factor (Z)', '1.0'],
-                                    ['Kd (Coefficient of Discharge)', '0.975'],
                                     ['Required Orifice Area', `${sr.requiredArea?.toFixed(4) || '-'} in²`]
                                 ];
-                            } else if (scenId === 'blocked_vapor' || scenId === 'cv_failure') {
+                            } else if (scenId === 'blocked_vapor') {
+                                // Blocked Outlet calculation details
+                                checkNewPage(40);
+                                doc.setFont('helvetica', 'bold');
+                                doc.setFontSize(8);
+                                doc.setFillColor(245, 245, 245);
+                                doc.rect(margin, yPos, pageWidth - 2*margin, 6, 'F');
+                                doc.rect(margin, yPos, pageWidth - 2*margin, 6);
+                                doc.text('Sizing Calculation', margin + 2, yPos + 4);
+                                yPos += 8;
+
                                 calcDetails = [
-                                    ['Flow Rate (W)', `${formatNumber(sr.requiredFlow, 0)} lb/hr`],
                                     ['Relief Device Set Pressure', `${deviceInfo.set_pressure || '-'} psig`],
                                     ['Allowable Overpressure', '10%'],
-                                    ['Relieving Pressure (P₁)', `${sr.relievingPressure?.toFixed(1) || '-'} psia`],
-                                    ['Relieving Temperature (T₁)', `${sr.relievingTempF?.toFixed(0) || '-'} °F`],
-                                    ['Molecular Weight (M)', `${sr.molecularWeight?.toFixed(2) || '-'} lb/lbmol`],
+                                    ['Relieving Pressure (p1)', `${(sr.relievingPressure - 14.69)?.toFixed(1) || '-'} psig`],
+                                    ['Relieving Temperature (T1)', `${sr.relievingTempF?.toFixed(0) || '-'} °F`],
+                                    ['Vapor Molecular Weight (M)', `${sr.molecularWeight?.toFixed(1) || '-'}`],
                                     ['Specific Heat Ratio (k)', `${sr.specificHeatRatio?.toFixed(3) || '-'}`],
                                     ['C Coefficient', `${sr.cCoefficient?.toFixed(1) || '315'}`],
+                                    ['Relieving Rate (Input)', `${formatNumber(sr.requiredFlow, 0)} lb/hr`],
                                     ['Compressibility Factor (Z)', '1.0'],
+                                    ['Kd (Coefficient of Discharge)', '0.975'],
+                                    ['Kb (Back Pressure Correction)', '1.0'],
+                                    ['Kc (Combination Correction)', '1.0'],
+                                    ['Required Orifice Area', `${sr.requiredArea?.toFixed(4) || '-'} in²`]
+                                ];
+                            } else if (scenId === 'cv_failure') {
+                                // CV Failure calculation details - more comprehensive like online
+                                checkNewPage(30);
+                                doc.setFont('helvetica', 'bold');
+                                doc.setFontSize(8);
+                                doc.setFillColor(245, 245, 245);
+                                doc.rect(margin, yPos, pageWidth - 2*margin, 6, 'F');
+                                doc.rect(margin, yPos, pageWidth - 2*margin, 6);
+                                doc.text('Vapor Properties', margin + 2, yPos + 4);
+                                yPos += 8;
+
+                                const vaporProps = [
+                                    ['Molecular Weight', `${sr.molecularWeight?.toFixed(2) || '-'} lb/lbmol`],
+                                    ['Specific Gravity (Gg)', `${(sr.molecularWeight / 28.97)?.toFixed(3) || '-'}`],
+                                    ['Specific Heat Ratio (k)', `${sr.specificHeatRatio?.toFixed(3) || '-'}`],
+                                    ['Ratio Factor (Fk)', `${(sr.specificHeatRatio / 1.4)?.toFixed(3) || '-'}`]
+                                ];
+                                doc.autoTable({
+                                    startY: yPos,
+                                    body: vaporProps,
+                                    theme: 'plain',
+                                    bodyStyles: { fontSize: 8 },
+                                    columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 50, halign: 'right' } },
+                                    margin: { left: margin, right: margin },
+                                    tableWidth: 130
+                                });
+                                yPos = doc.lastAutoTable.finalY + 5;
+
+                                // Upstream/Downstream Properties
+                                checkNewPage(30);
+                                doc.setFont('helvetica', 'bold');
+                                doc.setFontSize(8);
+                                doc.setFillColor(245, 245, 245);
+                                doc.rect(margin, yPos, pageWidth - 2*margin, 6, 'F');
+                                doc.rect(margin, yPos, pageWidth - 2*margin, 6);
+                                doc.text('Upstream & Downstream Properties', margin + 2, yPos + 4);
+                                yPos += 8;
+
+                                const upDownProps = [
+                                    ['Maximum Operating Pressure (P1)', `${cond.upstream_pressure || '-'} psig`],
+                                    ['Temperature (T1)', `${cond.upstream_temp || '-'} °F`],
+                                    ['Relief Device Set Pressure', `${deviceInfo.set_pressure || '-'} psig`],
+                                    ['Allowable Overpressure', '10%'],
+                                    ['Relieving Pressure (P2)', `${(sr.relievingPressure - 14.69)?.toFixed(1) || '-'} psig`]
+                                ];
+                                doc.autoTable({
+                                    startY: yPos,
+                                    body: upDownProps,
+                                    theme: 'plain',
+                                    bodyStyles: { fontSize: 8 },
+                                    columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 50, halign: 'right' } },
+                                    margin: { left: margin, right: margin },
+                                    tableWidth: 130
+                                });
+                                yPos = doc.lastAutoTable.finalY + 5;
+
+                                // Control Valve Specification
+                                checkNewPage(30);
+                                doc.setFont('helvetica', 'bold');
+                                doc.setFontSize(8);
+                                doc.setFillColor(255, 240, 220);
+                                doc.rect(margin, yPos, pageWidth - 2*margin, 6, 'F');
+                                doc.rect(margin, yPos, pageWidth - 2*margin, 6);
+                                doc.text('Control Valve Specification', margin + 2, yPos + 4);
+                                yPos += 8;
+
+                                const cvProps = [
+                                    ['Valve Tag', cond.valve_tag || '-'],
+                                    ['Full-Open Valve Coefficient (Cv)', `${cond.cv || '-'}`],
+                                    ['Pressure Drop Ratio Factor (XT)', `${cond.xt || '-'}`]
+                                ];
+                                doc.autoTable({
+                                    startY: yPos,
+                                    body: cvProps,
+                                    theme: 'plain',
+                                    bodyStyles: { fontSize: 8 },
+                                    columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 50, halign: 'right' } },
+                                    margin: { left: margin, right: margin },
+                                    tableWidth: 130
+                                });
+                                yPos = doc.lastAutoTable.finalY + 5;
+
+                                // Calculated Flow section
+                                checkNewPage(30);
+                                doc.setFont('helvetica', 'bold');
+                                doc.setFontSize(8);
+                                doc.setFillColor(220, 240, 255);
+                                doc.rect(margin, yPos, pageWidth - 2*margin, 6, 'F');
+                                doc.rect(margin, yPos, pageWidth - 2*margin, 6);
+                                doc.text('Calculated Flow Through Failed Valve', margin + 2, yPos + 4);
+                                yPos += 8;
+
+                                calcDetails = [
+                                    ['Mass Flow (W)', `${formatNumber(sr.requiredFlow, 0)} lb/hr`],
+                                    ['Compressibility Factor (Z)', `${sr.Z?.toFixed(2) || '0.95'}`],
+                                    ['C Coefficient', `${sr.cCoefficient?.toFixed(1) || '315'}`],
                                     ['Kd (Coefficient of Discharge)', '0.975'],
                                     ['Kb (Back Pressure Correction)', '1.0'],
                                     ['Kc (Combination Correction)', '1.0'],
@@ -2059,17 +2407,15 @@
                             if (calcDetails.length > 0) {
                                 doc.autoTable({
                                     startY: yPos,
-                                    head: [['Parameter', 'Value']],
                                     body: calcDetails,
-                                    theme: 'grid',
-                                    headStyles: { fillColor: [200, 220, 240], textColor: [0, 0, 0], fontStyle: 'bold', fontSize: 8 },
+                                    theme: 'plain',
                                     bodyStyles: { fontSize: 8 },
                                     columnStyles: {
-                                        0: { cellWidth: 70 },
-                                        1: { cellWidth: 40, halign: 'right' }
+                                        0: { cellWidth: 80 },
+                                        1: { cellWidth: 50, halign: 'right' }
                                     },
                                     margin: { left: margin, right: margin },
-                                    tableWidth: 110
+                                    tableWidth: 130
                                 });
                                 yPos = doc.lastAutoTable.finalY + 8;
                             }
@@ -3071,7 +3417,7 @@ Because the two cases above do not apply, a detailed analysis has not been perfo
                                             {ratedArea > 0 && requiredArea > 0 && (
                                                 <div className="mt-3 pt-3 border-t border-gray-200">
                                                     <div className="flex justify-between items-center">
-                                                        <span className="text-sm text-gray-600">Utilization</span>
+                                                        <span className="text-sm text-gray-600">Sizing %</span>
                                                         <span className={`text-sm font-bold ${(requiredArea / ratedArea * 100) <= 100 ? 'text-green-600' : 'text-red-600'}`}>
                                                             {(requiredArea / ratedArea * 100).toFixed(1)}%
                                                             {(requiredArea / ratedArea * 100) <= 100 ? ' ✓' : ' (Undersized!)'}
@@ -3532,7 +3878,7 @@ Because the two cases above do not apply, a detailed analysis has not been perfo
                                             {ratedArea > 0 && requiredArea > 0 && (
                                                 <div className="mt-3 pt-3 border-t border-gray-200">
                                                     <div className="flex justify-between items-center">
-                                                        <span className="text-sm text-gray-600">Utilization</span>
+                                                        <span className="text-sm text-gray-600">Sizing %</span>
                                                         <span className={`text-sm font-bold ${(requiredArea / ratedArea * 100) <= 100 ? 'text-green-600' : 'text-red-600'}`}>
                                                             {(requiredArea / ratedArea * 100).toFixed(1)}%
                                                             {(requiredArea / ratedArea * 100) <= 100 ? ' ✓' : ' (Undersized!)'}
@@ -4216,7 +4562,7 @@ Because the two cases above do not apply, a detailed analysis has not been perfo
                                             {ratedArea > 0 && requiredArea > 0 && (
                                                 <div className="mt-3 pt-3 border-t border-gray-200">
                                                     <div className="flex justify-between items-center">
-                                                        <span className="text-sm text-gray-600">Utilization</span>
+                                                        <span className="text-sm text-gray-600">Sizing %</span>
                                                         <span className={`text-sm font-bold ${(requiredArea / ratedArea * 100) <= 100 ? 'text-green-600' : 'text-red-600'}`}>
                                                             {(requiredArea / ratedArea * 100).toFixed(1)}%
                                                             {(requiredArea / ratedArea * 100) <= 100 ? ' ✓' : ' (Undersized!)'}
@@ -4464,7 +4810,7 @@ Because the two cases above do not apply, a detailed analysis has not been perfo
                                         {ratedArea > 0 && requiredArea > 0 && (
                                             <div className="mt-3 pt-3 border-t border-gray-200">
                                                 <div className="flex justify-between items-center">
-                                                    <span className="text-sm text-gray-600">Utilization</span>
+                                                    <span className="text-sm text-gray-600">Sizing %</span>
                                                     <span className={`text-sm font-bold ${(requiredArea / ratedArea * 100) <= 100 ? 'text-green-600' : 'text-red-600'}`}>
                                                         {(requiredArea / ratedArea * 100).toFixed(1)}%
                                                         {(requiredArea / ratedArea * 100) <= 100 ? ' ✓' : ' (Undersized!)'}
