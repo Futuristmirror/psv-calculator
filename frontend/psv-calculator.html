@@ -749,7 +749,7 @@
                         F = Math.min(1.0, cond.thermal_conductivity / (cond.insulation_thickness * 21000 / 904));
                     }
                     const wettedAreas = calcVesselAreas({ ...vesselDetails, max_liquid_level: cond.liquid_level });
-                    const wettedArea = wettedAreas.wettedArea;
+                    const wettedArea = wettedAreas.wetted;
                     const Q = heatConst * F * Math.pow(wettedArea, 0.82);
                     const latentHeat = cond.latent_heat || 150;
                     const W = latentHeat > 0 ? Q / latentHeat : 0;
@@ -2041,7 +2041,7 @@
 
                                 // Calculate wetted surface area
                                 const wettedVesselAreas = calcVesselAreas({ ...vesselDetails, max_liquid_level: cond.liquid_level });
-                                const wettedArea = wettedVesselAreas.wettedArea;
+                                const wettedArea = wettedVesselAreas.wetted;
 
                                 // Total heat absorption Q = C * F * A^0.82
                                 const Q = heatAbsorptionConstant * F * Math.pow(wettedArea, 0.82);
