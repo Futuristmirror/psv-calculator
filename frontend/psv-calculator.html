@@ -2638,10 +2638,11 @@
                                 // Total heat input for the vaporized portion
                                 const Q_total_stream = Q_sensible + Q_latent_PR;
 
-                                // Effective latent heat (Btu/lb) for multi-component
-                                const lambda_lightEnds = massVaporized > 0 ? Q_total_stream / massVaporized : latentHeat;
+                                // Multi-component latent heat (Btu/lb) = LATENT portion only / mass vaporized
+                                // NOT total heat / mass - the sensible heat is separate
+                                const lambda_lightEnds = massVaporized > 0 ? Q_latent_PR / massVaporized : latentHeat;
 
-                                // Relief load W = Q / λ (use effective lambda for multi-component)
+                                // Relief load W = Q / λ (use multi-component lambda for multi-component mixtures)
                                 const effectiveLambda = isMultiComponent ? lambda_lightEnds : latentHeat;
                                 const W = effectiveLambda > 0 ? Q / effectiveLambda : 0;
 
@@ -3152,24 +3153,20 @@
                                                 <h5 className="font-semibold text-purple-800 mb-2 text-sm">Heat Duty Calculations (per 1000 lb/hr basis)</h5>
                                                 <div className="space-y-1 text-xs">
                                                     <div className="flex justify-between">
-                                                        <span className="text-gray-600">Sensible Heat (n×Cp×ΔT)</span>
+                                                        <span className="text-gray-600">Sensible Heat (n×Cp_avg×ΔT)</span>
                                                         <span className="font-medium">{Q_sensible > 0 ? Q_sensible.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} <span className="text-gray-400">Btu/hr</span></span>
                                                     </div>
                                                     <div className="flex justify-between">
-                                                        <span className="text-gray-600">PR-EOS Latent Heat (n×ΔH_vap)</span>
+                                                        <span className="text-gray-600">Latent Heat (n_vap×ΔH_vap)</span>
                                                         <span className="font-medium">{Q_latent_PR > 0 ? Q_latent_PR.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} <span className="text-gray-400">Btu/hr</span></span>
                                                     </div>
-                                                    <div className="flex justify-between">
-                                                        <span className="text-gray-600">Total Heat Duty (Sens + Lat)</span>
+                                                    <div className="flex justify-between border-t pt-1 mt-1">
+                                                        <span className="text-gray-600">Total Heat Input</span>
                                                         <span className="font-medium">{Q_total_stream > 0 ? Q_total_stream.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} <span className="text-gray-400">Btu/hr</span></span>
                                                     </div>
-                                                    <div className="flex justify-between border-t pt-1 mt-1">
-                                                        <span className="text-gray-700 font-medium">Effective Latent Heat (Q/m_vap)</span>
+                                                    <div className="flex justify-between border-t pt-1 mt-1 bg-purple-50 -mx-3 px-3 py-1">
+                                                        <span className="text-gray-700 font-medium">Multi-Comp Latent Heat (Q_lat/m_vap)</span>
                                                         <span className="font-bold text-purple-700">{lambda_lightEnds > 0 ? lambda_lightEnds.toFixed(0) : '-'} <span className="text-gray-400">Btu/lb</span></span>
-                                                    </div>
-                                                    <div className="flex justify-between">
-                                                        <span className="text-gray-600">PR-EOS Molar ΔH_vap</span>
-                                                        <span className="font-medium">{latentHeat_PR > 0 ? latentHeat_PR.toFixed(0) : '-'} <span className="text-gray-400">Btu/lbmol</span></span>
                                                     </div>
                                                 </div>
                                             </div>
