@@ -3601,7 +3601,7 @@ Because the two cases above do not apply, a detailed analysis has not been perfo
 
                                         {/* Vessel Details with Diagram - BEFORE Latent Heat */}
                                         <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                                            <h4 className="font-medium text-gray-700 mb-4">Vessel Details</h4>
+                                            <h4 className="font-medium text-gray-700 mb-4">Vessel Details (Fire Wetted) - A<sub>ws</sub></h4>
                                             <div className="flex gap-6">
                                                 {/* Left: Vessel Inputs */}
                                                 <div className="flex-1 space-y-3">
@@ -3763,41 +3763,275 @@ Because the two cases above do not apply, a detailed analysis has not been perfo
                                             </div>
                                         </div>
 
-                                        {/* Calculated Parameters Display */}
-                                        <div className="space-y-2">
-                                            {/* Relief Device Set Pressure - Display */}
-                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                                                <span className="text-sm text-gray-700">Relief Device Set Pressure</span>
-                                                <div className="flex items-center space-x-2">
-                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{setP || '-'}</span>
-                                                    <span className="text-xs text-gray-500 w-12">psig</span>
+                                        {/* ========== LATENT HEAT CALCULATION SECTION ========== */}
+                                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+                                            <h4 className="font-medium text-amber-800 mb-3">Latent Heat Calculation</h4>
+                                            <div className="space-y-2">
+                                                {/* Ambient Pressure */}
+                                                <div className="flex items-center justify-between py-1">
+                                                    <span className="text-sm text-gray-700">Ambient Pressure</span>
+                                                    <div className="flex items-center space-x-2">
+                                                        <span className="text-sm font-medium text-gray-900 w-24 text-right">14.7</span>
+                                                        <span className="text-xs text-gray-500 w-12">psia</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Relief Device Set Pressure */}
+                                                <div className="flex items-center justify-between py-1">
+                                                    <span className="text-sm text-gray-700">Relief Device Set Pressure</span>
+                                                    <div className="flex items-center space-x-2">
+                                                        <span className="text-sm font-medium text-gray-900 w-24 text-right">{setP || '-'}</span>
+                                                        <span className="text-xs text-gray-500 w-12">psig</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Allowable Overpressure */}
+                                                <div className="flex items-center justify-between py-1">
+                                                    <span className="text-sm text-gray-700">Allowable Overpressure</span>
+                                                    <div className="flex items-center space-x-2">
+                                                        <span className="text-sm font-medium text-gray-900 w-24 text-right">21%</span>
+                                                        <span className="text-xs text-gray-500 w-12"></span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Absolute Relieving Pressure */}
+                                                <div className="flex items-center justify-between py-1">
+                                                    <span className="text-sm text-gray-700">Absolute Relieving Pressure (P₁)</span>
+                                                    <div className="flex items-center space-x-2">
+                                                        <span className="text-sm font-medium text-gray-900 w-24 text-right">{p1_psia > 0 ? p1_psia.toFixed(0) : '-'}</span>
+                                                        <span className="text-xs text-gray-500 w-12">psia</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Critical Pressure */}
+                                                <div className="flex items-center justify-between py-1">
+                                                    <span className="text-sm text-gray-700">Critical Pressure (P<sub>crit</sub>)</span>
+                                                    <div className="flex items-center space-x-2">
+                                                        <span className="text-sm font-medium text-gray-900 w-24 text-right">{Pcrit > 0 ? Pcrit.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'}</span>
+                                                        <span className="text-xs text-gray-500 w-12">psia</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Single/Multi-Component Indicator */}
+                                                <div className="flex items-center justify-between py-1 bg-amber-100 -mx-4 px-4 rounded">
+                                                    <span className="text-sm text-gray-700">Single-Component or Multi-Component?</span>
+                                                    <div className="flex items-center space-x-2">
+                                                        <span className={`text-sm font-bold w-36 text-right ${isMultiComponent ? 'text-blue-600' : 'text-green-600'}`}>
+                                                            {isMultiComponent ? 'MULTI-COMPONENT' : 'SINGLE-COMPONENT'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Single-Component fields (only show if single component) */}
+                                                {!isMultiComponent && (
+                                                <>
+                                                    <div className="flex items-center justify-between py-1">
+                                                        <span className="text-sm text-gray-700">Single-Component Molecular Weight</span>
+                                                        <div className="flex items-center space-x-2">
+                                                            <span className="text-sm font-medium text-gray-900 w-24 text-right">{M > 0 ? M.toFixed(2) : '-'}</span>
+                                                            <span className="text-xs text-gray-500 w-12">lb/lbmol</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center justify-between py-1">
+                                                        <span className="text-sm text-gray-700">Single-Component Mass Latent Heat</span>
+                                                        <div className="flex items-center space-x-2">
+                                                            <span className="text-sm font-medium text-gray-900 w-24 text-right">{latentHeat > 0 ? latentHeat.toFixed(0) : '-'}</span>
+                                                            <span className="text-xs text-gray-500 w-12">Btu/lb</span>
+                                                        </div>
+                                                    </div>
+                                                </>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* ========== STREAM A/B MULTI-COMPONENT ANALYSIS (Always visible for multi-component) ========== */}
+                                        {isMultiComponent && (
+                                        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-4">
+                                            <h4 className="font-medium text-purple-800 mb-3">Multi-Component Latent Heat Analysis</h4>
+
+                                            {/* Heat Exchanger Diagram */}
+                                            <div className="mb-4 flex justify-center">
+                                                <svg width="300" height="80" viewBox="0 0 300 80">
+                                                    <line x1="20" y1="40" x2="100" y2="40" stroke="#3B82F6" strokeWidth="2" markerEnd="url(#arrowBlue3)"/>
+                                                    <text x="60" y="25" textAnchor="middle" fontSize="10" fill="#3B82F6">Stream A</text>
+                                                    <circle cx="150" cy="40" r="30" fill="#FEE2E2" stroke="#DC2626" strokeWidth="2"/>
+                                                    <path d="M135 32 Q142 40 135 48 Q142 40 150 48 Q158 40 165 48 Q158 40 165 32" fill="none" stroke="#DC2626" strokeWidth="1.5"/>
+                                                    <text x="150" y="75" textAnchor="middle" fontSize="9" fill="#DC2626">Heat Input</text>
+                                                    <line x1="200" y1="40" x2="280" y2="40" stroke="#10B981" strokeWidth="2" markerEnd="url(#arrowGreen3)"/>
+                                                    <text x="240" y="25" textAnchor="middle" fontSize="10" fill="#10B981">Stream B</text>
+                                                    <defs>
+                                                        <marker id="arrowBlue3" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+                                                            <path d="M0,0 L0,6 L8,3 z" fill="#3B82F6"/>
+                                                        </marker>
+                                                        <marker id="arrowGreen3" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+                                                            <path d="M0,0 L0,6 L8,3 z" fill="#10B981"/>
+                                                        </marker>
+                                                    </defs>
+                                                </svg>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-4">
+                                                {/* Stream A Properties */}
+                                                <div className="bg-blue-100 rounded-lg p-3">
+                                                    <h5 className="font-semibold text-blue-800 mb-2 text-sm italic">Stream A Properties</h5>
+                                                    <div className="space-y-1 text-xs">
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Vapor Fraction</span>
+                                                            <span className="font-medium">0.00</span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Pressure</span>
+                                                            <span className="font-medium">{p1_psia.toFixed(0)} <span className="text-gray-400">psia</span></span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Temperature</span>
+                                                            <span className="font-medium">{T_bubble.toFixed(1)} <span className="text-gray-400">°F</span></span>
+                                                        </div>
+                                                        <div className="text-gray-500 text-[10px] ml-2">- Bubble Point Temperature at Relieving Pressure</div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Mass Flow Rate</span>
+                                                            <span className="font-medium">{massFlowBasis.toLocaleString()} <span className="text-gray-400">lb/hr</span></span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Molar Flow Rate</span>
+                                                            <span className="font-medium">{molarFlowBasis.toFixed(1)} <span className="text-gray-400">lbmol/hr</span></span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Molar Heat Capacity</span>
+                                                            <span className="font-medium">{Cp_A.toFixed(2)} <span className="text-gray-400">Btu/lbmol·°F</span></span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Stream B Properties */}
+                                                <div className="bg-green-100 rounded-lg p-3">
+                                                    <h5 className="font-semibold text-green-800 mb-2 text-sm italic">Stream B Properties</h5>
+                                                    <div className="space-y-1 text-xs">
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Vapor Fraction (by mol)</span>
+                                                            <span className="font-medium">{actualVaporFrac.toFixed(2)}</span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Pressure</span>
+                                                            <span className="font-medium">{p1_psia.toFixed(0)} <span className="text-gray-400">psia</span></span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Temperature</span>
+                                                            <span className="font-medium">{T_B.toFixed(1)} <span className="text-gray-400">°F</span></span>
+                                                        </div>
+                                                        <div className="text-gray-500 text-[10px] ml-2">- Dew Point Temperature of the 5% Light Ends</div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Mass Flow Rate (Mass Vaporized)</span>
+                                                            <span className="font-medium">{massVaporized.toFixed(0)} <span className="text-gray-400">lb/hr</span></span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Molar Flow Rate (Moles Vaporized)</span>
+                                                            <span className="font-medium">{molesVaporized.toFixed(2)} <span className="text-gray-400">lbmol/hr</span></span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Bulk Molar Heat Capacity</span>
+                                                            <span className="font-medium">{Cp_B.toFixed(2)} <span className="text-gray-400">Btu/lbmol·°F</span></span>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
 
-                                            {/* Allowable Overpressure - Display */}
-                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                                                <span className="text-sm text-gray-700">Allowable Overpressure</span>
-                                                <div className="flex items-center space-x-2">
-                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">21%</span>
-                                                    <span className="text-xs text-gray-500 w-12"></span>
+                                            {/* Heat Duty Summary */}
+                                            <div className="mt-4 bg-white rounded-lg p-3 border border-purple-200">
+                                                <div className="space-y-1 text-sm">
+                                                    <div className="flex justify-between">
+                                                        <div>
+                                                            <span className="text-gray-700 font-medium">Total Heat Input</span>
+                                                            <div className="text-[10px] text-gray-500 ml-2">- Heat Required to Boil the 5% Light Ends & Heat Stream A to Stream B Temperature</div>
+                                                        </div>
+                                                        <span className="font-medium">{Q_total_stream > 0 ? Q_total_stream.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} <span className="text-xs text-gray-400">Btu/hr</span></span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <div>
+                                                            <span className="text-gray-700">Sensible Heat Input</span>
+                                                            <div className="text-[10px] text-gray-500 ml-2">- Heat Required to Heat Stream A to Stream B Temperature</div>
+                                                        </div>
+                                                        <span className="font-medium">{Q_sensible > 0 ? Q_sensible.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} <span className="text-xs text-gray-400">Btu/hr</span></span>
+                                                    </div>
+                                                    <div className="flex justify-between bg-purple-100 -mx-3 px-3 py-1 rounded">
+                                                        <div>
+                                                            <span className="text-gray-700 font-medium">Multi-Component Mass Latent Heat (Light Ends)</span>
+                                                            <div className="text-[10px] text-gray-500 ml-2">- Heat Required to Boil the 5% Light Ends</div>
+                                                        </div>
+                                                        <span className="font-bold text-purple-700">{lambda_lightEnds_calc > 0 ? lambda_lightEnds_calc.toFixed(0) : '-'} <span className="text-xs text-gray-400">Btu/lb</span></span>
+                                                    </div>
                                                 </div>
                                             </div>
+                                        </div>
+                                        )}
 
+                                        {/* ========== REQUIRED RELIEVING RATE CALCULATION ========== */}
+                                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                                            <h4 className="font-medium text-gray-700 mb-3">Required Relieving Rate Calculation</h4>
+                                            <div className="space-y-2">
+                                                {/* Insulation Status */}
+                                                <div className="flex items-center justify-between py-1">
+                                                    <span className="text-sm text-gray-700">Is the Vessel Insulated or Bare?</span>
+                                                    <div className="flex items-center space-x-2">
+                                                        <span className="text-sm font-medium text-gray-900 w-24 text-right">BARE</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Environment Factor */}
+                                                <div className="flex items-center justify-between py-1">
+                                                    <span className="text-sm text-gray-700">Environment Factor (F)</span>
+                                                    <div className="flex items-center space-x-2">
+                                                        <span className="text-sm font-medium text-gray-900 w-24 text-right">{F.toFixed(2)}</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Wetted Surface Area */}
+                                                <div className="flex items-center justify-between py-1 bg-blue-50 -mx-4 px-4 rounded">
+                                                    <span className="text-sm font-medium text-gray-700">Wetted Surface Area (A<sub>ws</sub>)</span>
+                                                    <div className="flex items-center space-x-2">
+                                                        <span className="text-sm font-bold text-blue-700 w-24 text-right">{wettedArea > 0 ? wettedArea.toFixed(1) : '-'}</span>
+                                                        <span className="text-xs text-gray-500 w-12">ft²</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Heat Absorption Constant */}
+                                                <div className="flex items-center justify-between py-1">
+                                                    <span className="text-sm text-gray-700">Heat Absorption Constant (C₁ or C₂)</span>
+                                                    <div className="flex items-center space-x-2">
+                                                        <span className="text-sm font-medium text-gray-900 w-24 text-right">{heatAbsorptionConstant.toLocaleString()}</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Total Heat Absorption */}
+                                                <div className="flex items-center justify-between py-1 bg-orange-50 -mx-4 px-4 rounded">
+                                                    <span className="text-sm font-medium text-gray-700">Total Heat Absorption (Q)</span>
+                                                    <div className="flex items-center space-x-2">
+                                                        <span className="text-sm font-bold text-orange-700 w-24 text-right">{Q > 0 ? Q.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'}</span>
+                                                        <span className="text-xs text-gray-500 w-12">Btu/hr</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Relief Load */}
+                                                <div className="flex items-center justify-between py-1 bg-red-50 -mx-4 px-4 rounded">
+                                                    <span className="text-sm font-medium text-gray-700">Relief Load</span>
+                                                    <div className="flex items-center space-x-2">
+                                                        <span className="text-sm font-bold text-red-700 w-24 text-right">{W > 0 ? W.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'}</span>
+                                                        <span className="text-xs text-gray-500 w-12">lb/hr</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* ========== OLD CALCULATED PARAMETERS (TO BE REMOVED/HIDDEN) ========== */}
+                                        <details className="mt-4">
+                                            <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">Show Additional Calculated Parameters</summary>
+                                        <div className="space-y-2 mt-2">
                                             {/* Relieving Pressure - Display (in psig) */}
                                             <div className="flex items-center justify-between py-2 border-b border-gray-100">
                                                 <span className="text-sm text-gray-700">Relieving Pressure (P₁)</span>
                                                 <div className="flex items-center space-x-2">
                                                     <span className="text-sm font-medium text-gray-900 w-24 text-right">{p1_psig > 0 ? p1_psig.toFixed(1) : '-'}</span>
                                                     <span className="text-xs text-gray-500 w-12">psig</span>
-                                                </div>
-                                            </div>
-
-                                            {/* Critical Pressure - Display */}
-                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                                                <span className="text-sm text-gray-700">Critical Pressure (P<sub>CRIT</sub>)</span>
-                                                <div className="flex items-center space-x-2">
-                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{Pcrit > 0 ? Pcrit.toFixed(0) : '-'}</span>
-                                                    <span className="text-xs text-gray-500 w-12">psia</span>
                                                 </div>
                                             </div>
 
@@ -3866,150 +4100,27 @@ Because the two cases above do not apply, a detailed analysis has not been perfo
                                                 </div>
                                             </div>
 
-                                            {/* Relief Load - Display (highlighted) */}
-                                            <div className="flex items-center justify-between py-2 border-b border-gray-100 bg-red-50 -mx-2 px-2 rounded">
-                                                <span className="text-sm font-medium text-gray-700">Relief Load (W = Q / λ)</span>
+                                            {/* Latent Heat - Display */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">
+                                                    Latent Heat of Vaporization (λ){isMultiComponent && cond.latent_heat_safety_factor && <span className="text-blue-600 text-xs ml-1">(×0.90 SF)</span>}
+                                                </span>
                                                 <div className="flex items-center space-x-2">
-                                                    <span className="text-sm font-bold text-red-700 w-24 text-right">{W > 0 ? W.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'}</span>
-                                                    <span className="text-xs text-gray-500 w-12">lb/hr</span>
+                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{effectiveLambda > 0 ? effectiveLambda.toFixed(1) : '-'}</span>
+                                                    <span className="text-xs text-gray-500 w-12">Btu/lb</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Relieving Temperature */}
+                                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                                <span className="text-sm text-gray-700">Relieving Temperature (T₁)</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <span className="text-sm font-medium text-gray-900 w-24 text-right">{T_B > 0 ? T_B.toFixed(0) : '-'}</span>
+                                                    <span className="text-xs text-gray-500 w-12">°F</span>
                                                 </div>
                                             </div>
                                         </div>
-
-                                        {/* ========== STREAM A/B MULTI-COMPONENT ANALYSIS (Collapsible) ========== */}
-                                        {isMultiComponent && (
-                                        <div className="mt-4">
-                                            <button
-                                                onClick={() => updateScenarioCondition('fire_wetted', 'show_math', !cond.show_math)}
-                                                className="text-xs text-purple-600 hover:text-purple-800 underline mb-2"
-                                            >
-                                                {cond.show_math ? 'Hide Calculation Details' : 'Show Calculation Details'}
-                                            </button>
-                                            {cond.show_math && (
-                                            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-xs">
-                                                <h5 className="font-semibold text-purple-800 mb-2">Multi-Component Latent Heat Analysis</h5>
-
-                                            {/* Heat Exchanger Diagram */}
-                                            <div className="mb-4 flex justify-center">
-                                                <svg width="300" height="80" viewBox="0 0 300 80">
-                                                    <line x1="20" y1="40" x2="100" y2="40" stroke="#3B82F6" strokeWidth="2" markerEnd="url(#arrowBlue2)"/>
-                                                    <text x="60" y="25" textAnchor="middle" fontSize="10" fill="#3B82F6">Stream A</text>
-                                                    <circle cx="150" cy="40" r="30" fill="#FEE2E2" stroke="#DC2626" strokeWidth="2"/>
-                                                    <path d="M135 32 Q142 40 135 48 Q142 40 150 48 Q158 40 165 48 Q158 40 165 32" fill="none" stroke="#DC2626" strokeWidth="1.5"/>
-                                                    <text x="150" y="75" textAnchor="middle" fontSize="9" fill="#DC2626">Heat Input</text>
-                                                    <line x1="200" y1="40" x2="280" y2="40" stroke="#10B981" strokeWidth="2" markerEnd="url(#arrowGreen2)"/>
-                                                    <text x="240" y="25" textAnchor="middle" fontSize="10" fill="#10B981">Stream B</text>
-                                                    <defs>
-                                                        <marker id="arrowBlue2" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
-                                                            <path d="M0,0 L0,6 L8,3 z" fill="#3B82F6"/>
-                                                        </marker>
-                                                        <marker id="arrowGreen2" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
-                                                            <path d="M0,0 L0,6 L8,3 z" fill="#10B981"/>
-                                                        </marker>
-                                                    </defs>
-                                                </svg>
-                                            </div>
-
-                                            <div className="grid grid-cols-2 gap-4">
-                                                {/* Stream A Properties */}
-                                                <div className="bg-blue-100 rounded-lg p-3">
-                                                    <h5 className="font-semibold text-blue-800 mb-2 text-sm">Stream A Properties</h5>
-                                                    <div className="space-y-1 text-xs">
-                                                        <div className="flex justify-between">
-                                                            <span className="text-gray-600">Vapor Fraction</span>
-                                                            <span className="font-medium">0.00</span>
-                                                        </div>
-                                                        <div className="flex justify-between">
-                                                            <span className="text-gray-600">Pressure</span>
-                                                            <span className="font-medium">{p1_psia.toFixed(0)} <span className="text-gray-400">psia</span></span>
-                                                        </div>
-                                                        <div className="flex justify-between">
-                                                            <span className="text-gray-600">Temperature (Bubble Pt)</span>
-                                                            <span className="font-medium">{T_bubble.toFixed(1)} <span className="text-gray-400">°F</span></span>
-                                                        </div>
-                                                        <div className="flex justify-between">
-                                                            <span className="text-gray-600">Mass Flow Rate</span>
-                                                            <span className="font-medium">{massFlowBasis.toLocaleString()} <span className="text-gray-400">lb/hr</span></span>
-                                                        </div>
-                                                        <div className="flex justify-between">
-                                                            <span className="text-gray-600">Molar Flow Rate</span>
-                                                            <span className="font-medium">{molarFlowBasis.toFixed(1)} <span className="text-gray-400">lbmol/hr</span></span>
-                                                        </div>
-                                                        <div className="flex justify-between">
-                                                            <span className="text-gray-600">Molar Heat Capacity</span>
-                                                            <span className="font-medium">{Cp_A.toFixed(2)} <span className="text-gray-400">Btu/lbmol·°F</span></span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                {/* Stream B Properties */}
-                                                <div className="bg-green-100 rounded-lg p-3">
-                                                    <h5 className="font-semibold text-green-800 mb-2 text-sm">Stream B Properties</h5>
-                                                    <div className="space-y-1 text-xs">
-                                                        <div className="flex justify-between">
-                                                            <span className="text-gray-600">Vapor Fraction (by mol)</span>
-                                                            <span className="font-medium">{(actualVaporFrac * 100).toFixed(1)} <span className="text-gray-400">%</span></span>
-                                                        </div>
-                                                        <div className="flex justify-between">
-                                                            <span className="text-gray-600">Pressure</span>
-                                                            <span className="font-medium">{p1_psia.toFixed(0)} <span className="text-gray-400">psia</span></span>
-                                                        </div>
-                                                        <div className="flex justify-between">
-                                                            <span className="text-gray-600">Temperature</span>
-                                                            <span className="font-medium">{T_B.toFixed(1)} <span className="text-gray-400">°F</span></span>
-                                                        </div>
-                                                        <div className="flex justify-between">
-                                                            <span className="text-gray-600">Vapor MW</span>
-                                                            <span className="font-medium">{mw_vapor.toFixed(2)} <span className="text-gray-400">lb/lbmol</span></span>
-                                                        </div>
-                                                        <div className="flex justify-between">
-                                                            <span className="text-gray-600">Mass Vaporized</span>
-                                                            <span className="font-medium">{massVaporized.toFixed(1)} <span className="text-gray-400">lb/hr</span></span>
-                                                        </div>
-                                                        <div className="flex justify-between">
-                                                            <span className="text-gray-600">Moles Vaporized</span>
-                                                            <span className="font-medium">{molesVaporized.toFixed(2)} <span className="text-gray-400">lbmol/hr</span></span>
-                                                        </div>
-                                                        <div className="flex justify-between">
-                                                            <span className="text-gray-600">Bulk Molar Cp (L+V)</span>
-                                                            <span className="font-medium">{Cp_B.toFixed(2)} <span className="text-gray-400">Btu/lbmol·°F</span></span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {/* Heat Calculations */}
-                                            <div className="mt-4 bg-white rounded-lg p-3 border border-purple-200">
-                                                <h5 className="font-semibold text-purple-800 mb-2 text-sm">Heat Duty Calculations (per 1000 lb/hr basis)</h5>
-                                                <div className="space-y-1 text-xs">
-                                                    <div className="flex justify-between">
-                                                        <span className="text-gray-600">Sensible Heat (n×Cp_avg×ΔT)</span>
-                                                        <span className="font-medium">{Q_sensible > 0 ? Q_sensible.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} <span className="text-gray-400">Btu/hr</span></span>
-                                                    </div>
-                                                    <div className="flex justify-between">
-                                                        <span className="text-gray-600">Latent Heat (n_vap×ΔH_vap)</span>
-                                                        <span className="font-medium">{Q_latent_PR > 0 ? Q_latent_PR.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} <span className="text-gray-400">Btu/hr</span></span>
-                                                    </div>
-                                                    <div className="flex justify-between border-t pt-1 mt-1">
-                                                        <span className="text-gray-600">Total Heat Input</span>
-                                                        <span className="font-medium">{Q_total_stream > 0 ? Q_total_stream.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} <span className="text-gray-400">Btu/hr</span></span>
-                                                    </div>
-                                                    <div className="flex justify-between">
-                                                        <span className="text-gray-600">Calculated λ (Q_lat/m_vap)</span>
-                                                        <span className="font-medium">{lambda_lightEnds_calc > 0 ? lambda_lightEnds_calc.toFixed(0) : '-'} <span className="text-gray-400">Btu/lb</span></span>
-                                                    </div>
-                                                    <div className="flex justify-between border-t pt-1 mt-1 bg-purple-50 -mx-3 px-3 py-1">
-                                                        <span className="text-gray-700 font-medium">
-                                                            Multi-Comp Latent Heat {cond.latent_heat_safety_factor && <span className="text-blue-600">(×0.90 SF)</span>}
-                                                        </span>
-                                                        <span className="font-bold text-purple-700">{lambda_lightEnds > 0 ? lambda_lightEnds.toFixed(0) : '-'} <span className="text-gray-400">Btu/lb</span></span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            </div>
-                                            )}
-                                        </div>
-                                        )}
+                                        </details>
                                     </div>
                                 );
                             })()}
