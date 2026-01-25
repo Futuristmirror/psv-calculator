@@ -728,10 +728,13 @@
 
                     const xChoked = Fk * XT;
                     const xEffective = Math.min(x, xChoked);
-                    const Cg = Cv * 40 * Math.sqrt(XT);
                     const Y = Math.max(1 - xEffective / (3 * Fk * XT), 0.667);
 
-                    const q = Gg > 0 && T1_R > 0 ? Cg * P1_psia * Y * Math.sqrt(xEffective / (Gg * T1_R * Z)) : 0;
+                    // ISA volumetric flow equation: q = N7 * Cv * P1 * Y * sqrt(x / (Gg * T * Z))
+                    const N7 = 1360; // For q in scfh, P in psia, T in °R
+                    const q = Gg > 0 && T1_R > 0 && Z > 0
+                        ? N7 * Cv * P1_psia * Y * Math.sqrt(xEffective / (Gg * T1_R * Z))
+                        : 0;
                     const W = q * M / 379.5;
 
                     const C = getAPI520_C(k);
@@ -2178,17 +2181,36 @@
                                 const xChoked = Fk * XT;
                                 const xEffective = Math.min(x, xChoked);
 
-                                // Gas sizing coefficient Cg
+                                // Gas sizing coefficient Cg (for display)
                                 const Cg = Cv * 40 * Math.sqrt(XT);
 
                                 // Expansion factor Y (limited to 0.667 minimum)
                                 const Y = Math.max(1 - xEffective / (3 * Fk * XT), 0.667);
 
-                                // Volumetric flow q (scfh) - ISA/IEC method for compressible fluids
-                                const q = Gg > 0 && T1_R > 0 ? Cg * P1_psia * Y * Math.sqrt(xEffective / (Gg * T1_R * Z)) : 0;
+                                // Volumetric flow q (scfh) - ISA equation with N7 = 1360
+                                const N7 = 1360; // For q in scfh, P in psia, T in °R
+                                const q = Gg > 0 && T1_R > 0 && Z > 0
+                                    ? N7 * Cv * P1_psia * Y * Math.sqrt(xEffective / (Gg * T1_R * Z))
+                                    : 0;
 
                                 // Mass flow W (lb/hr) = q * M / 379.5 (molar volume at STP)
                                 const W = q * M / 379.5;
+
+                                // Calculate required area
+                                const C = getAPI520_C(k);
+                                const Kd = 0.975;
+                                const requiredArea = W > 0 && M > 0 && P2_psia > 0
+                                    ? (W * Math.sqrt(T1_R * Z)) / (C * Kd * P2_psia * 1.0 * 1.0 * Math.sqrt(M))
+                                    : 0;
+
+                                // Get selected orifice info
+                                const selectedOrifice = ORIFICES.find(o => o.size === deviceInfo.selected_orifice);
+                                const ratedArea = selectedOrifice ? selectedOrifice.area : 0;
+
+                                // Calculate rated relief load
+                                const ratedReliefLoad = ratedArea > 0 && M > 0 && P2_psia > 0
+                                    ? (ratedArea * C * Kd * P2_psia * 1.0 * 1.0 * Math.sqrt(M)) / Math.sqrt(T1_R * Z)
+                                    : 0;
 
                                 return (
                                 <div className="bg-white rounded-xl shadow-lg p-6">
@@ -2198,38 +2220,51 @@
                                         <h3 className="text-lg font-semibold">CV Failure - Vapor</h3>
                                     </div>
 
-                                    {/* Relief Device Sizing Summary */}
-                                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                                        <h4 className="font-semibold text-blue-800 mb-3">Relief Device Sizing Summary</h4>
-                                        <div className="grid grid-cols-3 gap-4 text-center">
-                                            <div>
-                                                <p className="text-xs text-gray-500 uppercase">Required Area</p>
-                                                <p className="text-lg font-bold text-blue-700">
-                                                    {W > 0 && M > 0 ? (
-                                                        (() => {
-                                                            const p1_psia = P2_psia;
-                                                            const T_R = T1_R;
-                                                            const C = getAPI520_C(k);
-                                                            const reqArea = (W * Math.sqrt(T_R * Z)) / (C * 0.975 * p1_psia * 1.0 * 1.0 * Math.sqrt(M));
-                                                            return reqArea.toFixed(4);
-                                                        })()
-                                                    ) : '—'}
-                                                </p>
-                                                <p className="text-xs text-gray-500">in²</p>
+                                    {/* Relief Device Sizing Summary - matches Fire Unwetted format */}
+                                    <div className="bg-gray-100 rounded-lg p-4 mb-4">
+                                        <h4 className="font-medium text-gray-700 mb-3">Relief Device Sizing Summary</h4>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="bg-white rounded-lg p-3 border border-gray-200">
+                                                <h5 className="text-xs font-semibold text-gray-500 uppercase mb-2">Required</h5>
+                                                <div className="space-y-2">
+                                                    <div className="flex justify-between">
+                                                        <span className="text-sm text-gray-600">Relief Load</span>
+                                                        <span className="text-sm font-medium">{W > 0 ? W.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} <span className="text-xs text-gray-400">lb/hr</span></span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span className="text-sm text-gray-600">Relief Area</span>
+                                                        <span className="text-sm font-medium">{requiredArea > 0 ? requiredArea.toFixed(4) : '-'} <span className="text-xs text-gray-400">in²</span></span>
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <div className="border-l border-r border-blue-200">
-                                                <p className="text-xs text-gray-500 uppercase">Relief Load</p>
-                                                <p className="text-lg font-bold text-blue-700">{W > 0 ? W.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '—'}</p>
-                                                <p className="text-xs text-gray-500">lb/hr</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-xs text-gray-500 uppercase">Rated Area</p>
-                                                <p className="text-lg font-bold text-gray-600">
-                                                    {ORIFICES.find(o => o.size === deviceInfo.selected_orifice)?.area.toFixed(3) || '—'}
-                                                </p>
-                                                <p className="text-xs text-gray-500">in²</p>
+                                            <div className="bg-white rounded-lg p-3 border border-gray-200">
+                                                <h5 className="text-xs font-semibold text-gray-500 uppercase mb-2">Rated ({selectedOrifice ? selectedOrifice.letter : '-'})</h5>
+                                                <div className="space-y-2">
+                                                    <div className="flex justify-between">
+                                                        <span className="text-sm text-gray-600">Relief Load</span>
+                                                        <span className="text-sm font-medium">{ratedReliefLoad > 0 ? ratedReliefLoad.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} <span className="text-xs text-gray-400">lb/hr</span></span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span className="text-sm text-gray-600">Relief Area</span>
+                                                        <span className="text-sm font-medium">{ratedArea > 0 ? ratedArea.toFixed(3) : '-'} <span className="text-xs text-gray-400">in²</span></span>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
+                                        {ratedArea > 0 && requiredArea > 0 && (
+                                            <div className="mt-3 pt-3 border-t border-gray-200">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-sm text-gray-600">Utilization</span>
+                                                    <span className={`text-sm font-bold ${(requiredArea / ratedArea * 100) <= 100 ? 'text-green-600' : 'text-red-600'}`}>
+                                                        {(requiredArea / ratedArea * 100).toFixed(1)}%
+                                                        {(requiredArea / ratedArea * 100) <= 100 ? ' ✓' : ' (Undersized!)'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {!selectedOrifice && (
+                                            <p className="mt-3 text-xs text-amber-600">Select a relief device size on the Device Info page to see rated values.</p>
+                                        )}
                                     </div>
 
                                     {/* Vapor Properties (from composition) */}
