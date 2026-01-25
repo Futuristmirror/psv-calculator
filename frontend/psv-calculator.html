@@ -381,9 +381,11 @@
                     flow_rate_unit: 'lb_hr', // 'lb_hr' or 'mmscfd'
                 },
                 cv_failure: {
-                    cv_capacity: 100,
-                    upstream_pressure: 200,
-                    relieving_temp: 100,
+                    valve_tag: '',
+                    cv: 100, // Full-Open Valve Flow Coefficient
+                    xt: 0.7, // Pressure Drop Ratio Factor
+                    upstream_pressure: 800, // psig (P1)
+                    upstream_temp: 138, // °F (T1)
                 },
             });
 
@@ -703,13 +705,49 @@
                     };
                 }
 
-                // CV Failure (3) - placeholder
+                // CV Failure (3)
                 if (scenarioSelections.cv_failure?.applicable) {
+                    const comp = compositions.cv_failure || {};
+                    const cond = scenarioConditions.cv_failure;
+                    const M = getMolecularWeight(comp);
+                    const Gg = M / 28.97;
+                    const k = getSpecificHeatRatio(comp);
+                    const Fk = k / 1.4;
+
+                    const P1_psig = cond.upstream_pressure;
+                    const P1_psia = P1_psig + 14.69;
+                    const P2_psig = setP * 1.10;
+                    const P2_psia = P2_psig + 14.69;
+                    const deltaP = P1_psig - P2_psig;
+                    const x = deltaP / P1_psia;
+
+                    const Cv = cond.cv;
+                    const XT = cond.xt;
+                    const Z = 0.95;
+                    const T1_R = cond.upstream_temp + 459.67;
+
+                    const xChoked = Fk * XT;
+                    const xEffective = Math.min(x, xChoked);
+                    const Cg = Cv * 40 * Math.sqrt(XT);
+                    const Y = Math.max(1 - xEffective / (3 * Fk * XT), 0.667);
+
+                    const q = Gg > 0 && T1_R > 0 ? Cg * P1_psia * Y * Math.sqrt(xEffective / (Gg * T1_R * Z)) : 0;
+                    const W = q * M / 379.5;
+
+                    const C = getAPI520_C(k);
+                    const requiredArea = W > 0 && M > 0 && P2_psia > 0
+                        ? (W * Math.sqrt(T1_R * Z)) / (C * 0.975 * P2_psia * 1.0 * 1.0 * Math.sqrt(M))
+                        : 0;
+                    const ratedLoad = ratedArea > 0 && M > 0 && P2_psia > 0
+                        ? (ratedArea * C * 0.975 * P2_psia * 1.0 * 1.0 * Math.sqrt(M)) / Math.sqrt(T1_R * Z)
+                        : 0;
+
                     scenarioResults.cv_failure = {
-                        applicable: true, label: '3', name: 'CV Failure',
-                        requiredFlow: 0, ratedFlow: 0, requiredArea: 0, ratedArea,
-                        adequate: true, placeholder: true
+                        applicable: true, label: '3', name: 'CV Failure - Vapor',
+                        requiredFlow: W, ratedFlow: ratedLoad, requiredArea, ratedArea,
+                        adequate: ratedArea >= requiredArea
                     };
+                    if (requiredArea > maxRequiredArea) { maxRequiredArea = requiredArea; controllingScenario = 'cv_failure'; }
                 }
 
                 // Find recommended orifice (smallest that meets required area)
@@ -2110,18 +2148,237 @@
                             })()}
 
                             {/* CV Failure (3) Section */}
-                            {(activeConditionsTab === 'cv_failure' || (applicableScenarios.length === 1 && scenarioSelections.cv_failure?.applicable)) && (
+                            {(activeConditionsTab === 'cv_failure' || (applicableScenarios.length === 1 && scenarioSelections.cv_failure?.applicable)) && (() => {
+                                const comp = compositions.cv_failure || {};
+                                const cond = scenarioConditions.cv_failure;
+                                const setP = parseFloat(deviceInfo.set_pressure) || 150;
+
+                                // Calculated vapor properties
+                                const M = getMolecularWeight(comp);
+                                const Gg = M / 28.97; // Specific gravity relative to air
+                                const k = getSpecificHeatRatio(comp);
+                                const Fk = k / 1.4; // Ratio of specific heats factor
+
+                                // Pressures
+                                const P1_psig = cond.upstream_pressure;
+                                const P1_psia = P1_psig + 14.69;
+                                const P2_psig = setP * 1.10; // Relieving pressure (10% overpressure)
+                                const P2_psia = P2_psig + 14.69;
+                                const deltaP = P1_psig - P2_psig;
+                                const x = deltaP / P1_psia; // Pressure drop ratio
+
+                                // Control valve calculations
+                                const Cv = cond.cv;
+                                const XT = cond.xt;
+                                const Z = 0.95; // Compressibility factor (fixed)
+                                const T1 = cond.upstream_temp;
+                                const T1_R = T1 + 459.67;
+
+                                // Limit x to Fk*XT (choked flow limit)
+                                const xChoked = Fk * XT;
+                                const xEffective = Math.min(x, xChoked);
+
+                                // Gas sizing coefficient Cg
+                                const Cg = Cv * 40 * Math.sqrt(XT);
+
+                                // Expansion factor Y (limited to 0.667 minimum)
+                                const Y = Math.max(1 - xEffective / (3 * Fk * XT), 0.667);
+
+                                // Volumetric flow q (scfh) - ISA/IEC method for compressible fluids
+                                const q = Gg > 0 && T1_R > 0 ? Cg * P1_psia * Y * Math.sqrt(xEffective / (Gg * T1_R * Z)) : 0;
+
+                                // Mass flow W (lb/hr) = q * M / 379.5 (molar volume at STP)
+                                const W = q * M / 379.5;
+
+                                return (
                                 <div className="bg-white rounded-xl shadow-lg p-6">
                                     <div className="flex items-center space-x-3 mb-4">
                                         <span className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-gray-200 text-gray-700 font-bold text-sm">3</span>
                                         <span className="text-xl">⚠️</span>
                                         <h3 className="text-lg font-semibold">CV Failure - Vapor</h3>
                                     </div>
-                                    <div className="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-4">
-                                        <p className="text-sm text-gray-500">CV Failure calculation section coming soon...</p>
+
+                                    {/* Relief Device Sizing Summary */}
+                                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                                        <h4 className="font-semibold text-blue-800 mb-3">Relief Device Sizing Summary</h4>
+                                        <div className="grid grid-cols-3 gap-4 text-center">
+                                            <div>
+                                                <p className="text-xs text-gray-500 uppercase">Required Area</p>
+                                                <p className="text-lg font-bold text-blue-700">
+                                                    {W > 0 && M > 0 ? (
+                                                        (() => {
+                                                            const p1_psia = P2_psia;
+                                                            const T_R = T1_R;
+                                                            const C = getAPI520_C(k);
+                                                            const reqArea = (W * Math.sqrt(T_R * Z)) / (C * 0.975 * p1_psia * 1.0 * 1.0 * Math.sqrt(M));
+                                                            return reqArea.toFixed(4);
+                                                        })()
+                                                    ) : '—'}
+                                                </p>
+                                                <p className="text-xs text-gray-500">in²</p>
+                                            </div>
+                                            <div className="border-l border-r border-blue-200">
+                                                <p className="text-xs text-gray-500 uppercase">Relief Load</p>
+                                                <p className="text-lg font-bold text-blue-700">{W > 0 ? W.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '—'}</p>
+                                                <p className="text-xs text-gray-500">lb/hr</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500 uppercase">Rated Area</p>
+                                                <p className="text-lg font-bold text-gray-600">
+                                                    {ORIFICES.find(o => o.size === deviceInfo.selected_orifice)?.area.toFixed(3) || '—'}
+                                                </p>
+                                                <p className="text-xs text-gray-500">in²</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Vapor Properties (from composition) */}
+                                    <div className="mb-6">
+                                        <h4 className="font-medium text-gray-700 mb-3">Vapor Properties</h4>
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 bg-gray-50 rounded-lg p-4">
+                                            <div>
+                                                <p className="text-xs text-gray-500">Molecular Weight</p>
+                                                <p className="font-semibold">{M > 0 ? M.toFixed(2) : '—'} <span className="text-xs text-gray-400">lb/lbmol</span></p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500">Specific Gravity (G<sub>g</sub>)</p>
+                                                <p className="font-semibold">{Gg > 0 ? Gg.toFixed(3) : '—'}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500">Specific Heat Ratio (k)</p>
+                                                <p className="font-semibold">{k > 0 ? k.toFixed(3) : '—'}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500">Ratio Factor (F<sub>k</sub>)</p>
+                                                <p className="font-semibold">{Fk > 0 ? Fk.toFixed(3) : '—'}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Upstream Properties */}
+                                    <div className="mb-6">
+                                        <h4 className="font-medium text-gray-700 mb-3">Upstream Properties</h4>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                    Maximum Operating Pressure (P<sub>1</sub>)
+                                                </label>
+                                                <div className="flex items-center">
+                                                    <input
+                                                        type="number"
+                                                        value={cond.upstream_pressure}
+                                                        onChange={(e) => updateScenarioCondition('cv_failure', 'upstream_pressure', e.target.value)}
+                                                        className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                                    />
+                                                    <span className="ml-2 text-sm text-gray-500">psig</span>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                    Temperature (T<sub>1</sub>)
+                                                </label>
+                                                <div className="flex items-center">
+                                                    <input
+                                                        type="number"
+                                                        value={cond.upstream_temp}
+                                                        onChange={(e) => updateScenarioCondition('cv_failure', 'upstream_temp', e.target.value)}
+                                                        className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                                    />
+                                                    <span className="ml-2 text-sm text-gray-500">°F</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Downstream Properties (calculated) */}
+                                    <div className="mb-6">
+                                        <h4 className="font-medium text-gray-700 mb-3">Downstream Properties</h4>
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 bg-gray-50 rounded-lg p-4">
+                                            <div>
+                                                <p className="text-xs text-gray-500">Relief Device Set Pressure</p>
+                                                <p className="font-semibold">{setP} <span className="text-xs text-gray-400">psig</span></p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500">Allowable Overpressure</p>
+                                                <p className="font-semibold">10%</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500">Relieving Pressure (P<sub>2</sub>)</p>
+                                                <p className="font-semibold">{P2_psig.toFixed(0)} <span className="text-xs text-gray-400">psig</span></p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500">Pressure Drop Ratio (x)</p>
+                                                <p className="font-semibold">{x > 0 ? x.toFixed(3) : '—'}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Control Valve Specification */}
+                                    <div className="mb-6">
+                                        <h4 className="font-medium text-gray-700 mb-3">Control Valve Specification</h4>
+                                        <div className="grid grid-cols-3 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Valve Tag</label>
+                                                <input
+                                                    type="text"
+                                                    value={cond.valve_tag}
+                                                    onChange={(e) => updateScenarioCondition('cv_failure', 'valve_tag', e.target.value)}
+                                                    className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                                    placeholder="LCV-485"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                    Full-Open Valve Coefficient (C<sub>v</sub>)
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    step="0.1"
+                                                    value={cond.cv}
+                                                    onChange={(e) => updateScenarioCondition('cv_failure', 'cv', e.target.value)}
+                                                    className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                    Pressure Drop Ratio Factor (X<sub>T</sub>)
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    value={cond.xt}
+                                                    onChange={(e) => updateScenarioCondition('cv_failure', 'xt', e.target.value)}
+                                                    className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Calculated Flow Values */}
+                                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                                        <h4 className="font-medium text-green-800 mb-3">Calculated Flow Through Failed Valve</h4>
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                            <div>
+                                                <p className="text-xs text-gray-500">Gas Sizing Coef (C<sub>g</sub>)</p>
+                                                <p className="font-semibold text-green-700">{Cg > 0 ? Cg.toFixed(0) : '—'}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500">Expansion Factor (Y)</p>
+                                                <p className="font-semibold text-green-700">{Y > 0 ? Y.toFixed(3) : '—'}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500">Volumetric Flow (q)</p>
+                                                <p className="font-semibold text-green-700">{q > 0 ? q.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '—'} <span className="text-xs">scfh</span></p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500">Mass Flow (W)</p>
+                                                <p className="font-semibold text-green-700">{W > 0 ? W.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '—'} <span className="text-xs">lb/hr</span></p>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
-                            )}
+                                );
+                            })()}
 
                             {/* Navigation */}
                             <div className="flex justify-between">
