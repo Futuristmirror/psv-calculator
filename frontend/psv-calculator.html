@@ -1164,9 +1164,15 @@
                     // Vertical vessel
                     const liquidHeight = liquidFrac * L_ft;
                     const wettedShell = Math.PI * D_ft * liquidHeight;
-                    // Only include bottom head as wetted if there's liquid
-                    const wettedHead = liquidFrac > 0 ? headArea : 0;
-                    wettedArea = wettedShell + wettedHead;
+
+                    // For wetted area: include bottom head if any liquid, plus shell up to liquid level
+                    // For unwetted area: use total - wetted to get shell above liquid + top head (+ bottom head if dry)
+                    const bottomHeadWetted = liquidFrac > 0 ? headArea : 0;
+
+                    // Check if liquid reaches top head (liquidFrac >= 1 means full)
+                    const topHeadWetted = liquidFrac >= 1 ? headArea : 0;
+
+                    wettedArea = wettedShell + bottomHeadWetted + topHeadWetted;
                     unwettedArea = totalArea - wettedArea;
                 }
 
