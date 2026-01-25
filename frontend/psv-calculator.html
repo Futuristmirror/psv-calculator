@@ -491,6 +491,203 @@
                 return totalMass > 0 ? hv_mix / totalMass : 150; // Default 150 Btu/lb if no data
             };
 
+            // ============ PENG-ROBINSON EOS CALCULATIONS ============
+
+            // Wilson K-value correlation: Ki = (Pci/P) * exp[5.37(1+ωi)(1-Tci/T)]
+            const calcWilsonK = (Tc_K, Pc_Pa, omega, T_K, P_Pa) => {
+                const Tr = T_K / Tc_K;
+                return (Pc_Pa / P_Pa) * Math.exp(5.37 * (1 + omega) * (1 - 1/Tr));
+            };
+
+            // Calculate bubble point temperature at given pressure
+            // Bubble point: Σ(Ki * zi) = 1
+            const calcBubblePoint = (composition, P_psia) => {
+                const P_Pa = P_psia * 6894.76;
+                const compArray = Object.entries(composition).filter(([_, mol]) => mol > 0);
+                if (compArray.length === 0) return 300; // Default 300°F
+
+                // Newton-Raphson iteration to find T where Σ(Ki*zi) = 1
+                let T_K = 300; // Initial guess in Kelvin
+                for (let iter = 0; iter < 50; iter++) {
+                    let sumKz = 0;
+                    let dSumKz_dT = 0;
+
+                    compArray.forEach(([compId, molPct]) => {
+                        const comp = COMPONENTS[compId];
+                        if (comp) {
+                            const zi = molPct / 100;
+                            const Ki = calcWilsonK(comp.tc, comp.pc, comp.omega, T_K, P_Pa);
+                            sumKz += Ki * zi;
+                            // Derivative of Ki with respect to T
+                            const dKi_dT = Ki * 5.37 * (1 + comp.omega) * comp.tc / (T_K * T_K);
+                            dSumKz_dT += dKi_dT * zi;
+                        }
+                    });
+
+                    const f = sumKz - 1;
+                    if (Math.abs(f) < 1e-6) break;
+
+                    T_K = T_K - f / dSumKz_dT;
+                    T_K = Math.max(100, Math.min(800, T_K)); // Bounds
+                }
+
+                return (T_K - 273.15) * 9/5 + 32; // Convert K to °F
+            };
+
+            // Calculate dew point temperature for vapor at given pressure
+            // Dew point: Σ(zi/Ki) = 1
+            const calcDewPoint = (composition, P_psia) => {
+                const P_Pa = P_psia * 6894.76;
+                const compArray = Object.entries(composition).filter(([_, mol]) => mol > 0);
+                if (compArray.length === 0) return 400; // Default
+
+                let T_K = 400; // Initial guess
+                for (let iter = 0; iter < 50; iter++) {
+                    let sumZoverK = 0;
+                    let dSum_dT = 0;
+
+                    compArray.forEach(([compId, molPct]) => {
+                        const comp = COMPONENTS[compId];
+                        if (comp) {
+                            const zi = molPct / 100;
+                            const Ki = calcWilsonK(comp.tc, comp.pc, comp.omega, T_K, P_Pa);
+                            sumZoverK += zi / Ki;
+                            const dKi_dT = Ki * 5.37 * (1 + comp.omega) * comp.tc / (T_K * T_K);
+                            dSum_dT += -zi * dKi_dT / (Ki * Ki);
+                        }
+                    });
+
+                    const f = sumZoverK - 1;
+                    if (Math.abs(f) < 1e-6) break;
+
+                    T_K = T_K - f / dSum_dT;
+                    T_K = Math.max(100, Math.min(800, T_K));
+                }
+
+                return (T_K - 273.15) * 9/5 + 32; // Convert K to °F
+            };
+
+            // Flash calculation at given T, P to find vapor fraction
+            // Rachford-Rice: Σ zi(Ki-1)/(1+V(Ki-1)) = 0
+            const calcFlash = (composition, T_F, P_psia) => {
+                const T_K = (T_F + 459.67) * 5/9;
+                const P_Pa = P_psia * 6894.76;
+                const compArray = Object.entries(composition).filter(([_, mol]) => mol > 0);
+
+                // Calculate K values
+                const Kvalues = {};
+                compArray.forEach(([compId, molPct]) => {
+                    const comp = COMPONENTS[compId];
+                    if (comp) {
+                        Kvalues[compId] = calcWilsonK(comp.tc, comp.pc, comp.omega, T_K, P_Pa);
+                    }
+                });
+
+                // Solve Rachford-Rice for V (vapor fraction)
+                let V = 0.5;
+                for (let iter = 0; iter < 50; iter++) {
+                    let f = 0, df = 0;
+                    compArray.forEach(([compId, molPct]) => {
+                        const zi = molPct / 100;
+                        const Ki = Kvalues[compId] || 1;
+                        const term = Ki - 1;
+                        const denom = 1 + V * term;
+                        f += zi * term / denom;
+                        df -= zi * term * term / (denom * denom);
+                    });
+
+                    if (Math.abs(f) < 1e-8) break;
+                    V = V - f / df;
+                    V = Math.max(0, Math.min(1, V));
+                }
+
+                // Calculate liquid and vapor compositions
+                const x = {}, y = {};
+                compArray.forEach(([compId, molPct]) => {
+                    const zi = molPct / 100;
+                    const Ki = Kvalues[compId] || 1;
+                    x[compId] = zi / (1 + V * (Ki - 1));
+                    y[compId] = Ki * x[compId];
+                });
+
+                return { V, x, y, Kvalues };
+            };
+
+            // Calculate molar heat capacity of mixture (Btu/lbmol·°F)
+            // cp values in COMPONENTS are in J/(mol·K), convert to Btu/(lbmol·°F)
+            const calcMolarCp = (composition) => {
+                let cp_mix = 0, totalMol = 0;
+                Object.entries(composition).forEach(([compId, molPct]) => {
+                    if (molPct > 0 && COMPONENTS[compId]?.cp) {
+                        totalMol += molPct;
+                        cp_mix += (molPct / 100) * COMPONENTS[compId].cp;
+                    }
+                });
+                // Convert J/(mol·K) to Btu/(lbmol·°F): multiply by 0.000429923
+                return totalMol > 0 ? (cp_mix * 100 / totalMol) * 0.000429923 : 20;
+            };
+
+            // Calculate multi-component latent heat using Stream A/B method
+            const calcMultiCompLatentHeat = (composition, P_psia, T_bubble_F) => {
+                const M = getMolecularWeight(composition);
+                const massFlowBasis = 1000; // lb/hr basis
+                const molarFlowBasis = M > 0 ? massFlowBasis / M : 0;
+
+                // Stream A: Liquid at bubble point (V = 0)
+                const T_A = T_bubble_F;
+                const Cp_A = calcMolarCp(composition);
+
+                // Stream B: 5% molar vapor
+                const vaporFracB = 0.05;
+                const molesVaporized = molarFlowBasis * vaporFracB;
+                const massVaporized = molesVaporized * M;
+
+                // Find temperature where we get 5% vapor (iterate)
+                let T_B = T_A + 50; // Start above bubble point
+                for (let iter = 0; iter < 50; iter++) {
+                    const flash = calcFlash(composition, T_B, P_psia);
+                    const diff = flash.V - vaporFracB;
+                    if (Math.abs(diff) < 0.001) break;
+                    // Adjust T based on whether we need more or less vapor
+                    T_B = T_B + diff * 100; // Simple adjustment
+                    T_B = Math.max(T_A, Math.min(T_A + 500, T_B));
+                }
+
+                // Recalculate flash at final T_B
+                const flashB = calcFlash(composition, T_B, P_psia);
+                const Cp_B = calcMolarCp(composition); // Bulk Cp (simplified - should weight L/V)
+
+                // Sensible heat: Q_sens = n * Cp_avg * (T_B - T_A)
+                const Cp_avg = (Cp_A + Cp_B) / 2;
+                const Q_sensible = molarFlowBasis * Cp_avg * (T_B - T_A); // Btu/hr
+
+                // Total heat from fire
+                // For multi-component: λ_eff = Q_total / mass_vaporized
+                // We need to iterate: Q = C*F*A^0.82, W = Q/λ, but λ depends on Q through T_B
+
+                // Return stream properties for display
+                return {
+                    streamA: {
+                        vaporFrac: 0,
+                        pressure: P_psia,
+                        temperature: T_A,
+                        massFlow: massFlowBasis,
+                        molarFlow: molarFlowBasis,
+                        molarCp: Cp_A
+                    },
+                    streamB: {
+                        vaporFrac: vaporFracB,
+                        pressure: P_psia,
+                        temperature: T_B,
+                        massVaporized: massVaporized,
+                        molesVaporized: molesVaporized,
+                        molarCp: Cp_B
+                    },
+                    Q_sensible: Q_sensible,
+                    M: M
+                };
+            };
+
             // API 521 Eqn (11): T1 = (p1/pn) * Tn
             const calcRelievingTemp = (p1_psia, pn_psig, Tn_F) => {
                 const pn_psia = pn_psig + AMBIENT_PRESSURE;
@@ -555,6 +752,30 @@
                 const totalVolume_ft3 = shellVolume + 2 * headVolume;
                 const totalVolume_gal = totalVolume_ft3 * 7.48052; // Convert to US gallons
 
+                // Calculate filled volume based on orientation
+                let filledVolume_ft3 = 0;
+
+                if (vessel.orientation === 'horizontal') {
+                    // Horizontal cylinder partial fill: circular segment
+                    const h = liquidFrac * D_ft; // liquid height
+                    // Cross-sectional area of liquid = R²×acos((R-h)/R) - (R-h)×√(2Rh-h²)
+                    const arg = Math.max(-1, Math.min(1, (R_ft - h) / R_ft));
+                    const segmentArea = R_ft * R_ft * Math.acos(arg) - (R_ft - h) * Math.sqrt(Math.max(0, 2 * R_ft * h - h * h));
+                    const shellLiquidVol = segmentArea * L_ft;
+
+                    // Head liquid volume (simplified - use fraction of total head volume)
+                    // For hemispherical heads: use liquid fraction directly
+                    // More accurate would require spherical cap integration
+                    const headLiquidVol = liquidFrac * (2 * headVolume);
+
+                    filledVolume_ft3 = shellLiquidVol + headLiquidVol;
+                } else {
+                    // Vertical vessel - simpler: volume × liquid fraction
+                    filledVolume_ft3 = totalVolume_ft3 * liquidFrac;
+                }
+
+                const filledVolume_gal = filledVolume_ft3 * 7.48052;
+
                 // For horizontal vessel, calculate wetted/unwetted based on liquid level
                 let wettedArea = 0;
                 let unwettedArea = 0;
@@ -597,6 +818,7 @@
                     shell: shellArea,
                     heads: totalHeadArea,
                     wetted: adjustedWetted,
+                    filledVolume_gal,
                     unwetted: adjustedUnwetted,
                     adjustedUnwetted,
                     adjustedWetted,
@@ -2035,8 +2257,8 @@
                                 const compEntries = Object.entries(comp).filter(([_, val]) => val > 0);
                                 const isMultiComponent = compEntries.length > 1;
 
-                                // Calculate bubble point temperature (simplified - would need proper VLE)
-                                const T_bubble = cond.normal_op_temp; // Simplified: use normal op temp
+                                // Calculate bubble point temperature using PR-EOS
+                                const T_bubble = compEntries.length > 0 ? calcBubblePoint(comp, p1_psia) : cond.normal_op_temp;
                                 const T1_R = T_bubble + 459.67;
 
                                 // Heat absorption constant: checked = 21000, unchecked = 34500
@@ -2048,13 +2270,45 @@
                                 // Calculate wetted surface area from vessel geometry
                                 const wettedVesselAreas = calcVesselAreas({ ...vesselDetails, max_liquid_level: cond.liquid_level });
                                 const wettedArea = wettedVesselAreas.wetted;
-                                const filledVolume_gal = wettedVesselAreas.volume_gal * (cond.liquid_level / 100);
+                                const filledVolume_gal = wettedVesselAreas.filledVolume_gal;
 
                                 // Total heat absorption Q = C * F * A^0.82
                                 const Q = heatAbsorptionConstant * F * Math.pow(wettedArea, 0.82);
 
-                                // Calculate latent heat from composition
+                                // Calculate latent heat from composition (simple approach for now)
                                 const latentHeat = getLatentHeat(comp);
+
+                                // ========== STREAM A/B CALCULATIONS FOR MULTI-COMPONENT ==========
+                                // Stream A: Liquid at bubble point (V = 0)
+                                const massFlowBasis = 1000; // lb/hr basis
+                                const molarFlowBasis = M > 0 ? massFlowBasis / M : 0;
+                                const Cp_A = calcMolarCp(comp); // Btu/(lbmol·°F)
+
+                                // Stream B: 5% molar vapor - find temperature
+                                const vaporFracB = 0.05;
+                                let T_B = T_bubble + 50; // Initial guess
+                                for (let iter = 0; iter < 100; iter++) {
+                                    const flash = calcFlash(comp, T_B, p1_psia);
+                                    const diff = flash.V - vaporFracB;
+                                    if (Math.abs(diff) < 0.0005) break;
+                                    T_B = T_B - diff * 200; // Adjusted step
+                                    T_B = Math.max(T_bubble + 1, Math.min(T_bubble + 500, T_B));
+                                }
+                                const molesVaporized = molarFlowBasis * vaporFracB;
+                                const massVaporized = molesVaporized * M;
+                                const Cp_B = calcMolarCp(comp); // Bulk Cp for entire stream
+
+                                // Sensible heat: Q_sens = n × Cp_avg × ΔT
+                                const Cp_avg = (Cp_A + Cp_B) / 2;
+                                const Q_sensible = molarFlowBasis * Cp_avg * (T_B - T_bubble);
+
+                                // Total heat input from fire (using Q calculated above for basis comparison)
+                                // For multi-component effective λ calculation:
+                                // Total Heat = Sensible + Latent for the 5% vaporization
+                                // λ_light_ends = (Total Heat - Sensible) / mass_vaporized
+                                const Q_total_basis = Q * (massFlowBasis / W); // Scale to 1000 lb/hr basis
+                                const Q_latent_lightEnds = Q_total_basis - Q_sensible;
+                                const lambda_lightEnds = massVaporized > 0 ? Q_latent_lightEnds / massVaporized : latentHeat;
 
                                 // Relief load W = Q / λ
                                 const W = latentHeat > 0 ? Q / latentHeat : 0;
@@ -2461,6 +2715,115 @@
                                                 <div className="flex items-center space-x-2">
                                                     <span className="text-sm font-bold text-red-700 w-24 text-right">{W > 0 ? W.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'}</span>
                                                     <span className="text-xs text-gray-500 w-12">lb/hr</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* ========== STREAM A/B MULTI-COMPONENT ANALYSIS (TEMPORARY) ========== */}
+                                        <div className="mt-6 bg-purple-50 border-2 border-purple-300 rounded-lg p-4">
+                                            <h4 className="font-bold text-purple-800 mb-4">Multi-Component Latent Heat Analysis (NGL Stream - Debug)</h4>
+
+                                            {/* Heat Exchanger Diagram */}
+                                            <div className="mb-4 flex justify-center">
+                                                <svg width="300" height="80" viewBox="0 0 300 80">
+                                                    <line x1="20" y1="40" x2="100" y2="40" stroke="#3B82F6" strokeWidth="2" markerEnd="url(#arrowBlue2)"/>
+                                                    <text x="60" y="25" textAnchor="middle" fontSize="10" fill="#3B82F6">Stream A</text>
+                                                    <circle cx="150" cy="40" r="30" fill="#FEE2E2" stroke="#DC2626" strokeWidth="2"/>
+                                                    <path d="M135 32 Q142 40 135 48 Q142 40 150 48 Q158 40 165 48 Q158 40 165 32" fill="none" stroke="#DC2626" strokeWidth="1.5"/>
+                                                    <text x="150" y="75" textAnchor="middle" fontSize="9" fill="#DC2626">Heat Input</text>
+                                                    <line x1="200" y1="40" x2="280" y2="40" stroke="#10B981" strokeWidth="2" markerEnd="url(#arrowGreen2)"/>
+                                                    <text x="240" y="25" textAnchor="middle" fontSize="10" fill="#10B981">Stream B</text>
+                                                    <defs>
+                                                        <marker id="arrowBlue2" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+                                                            <path d="M0,0 L0,6 L8,3 z" fill="#3B82F6"/>
+                                                        </marker>
+                                                        <marker id="arrowGreen2" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+                                                            <path d="M0,0 L0,6 L8,3 z" fill="#10B981"/>
+                                                        </marker>
+                                                    </defs>
+                                                </svg>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-4">
+                                                {/* Stream A Properties */}
+                                                <div className="bg-blue-100 rounded-lg p-3">
+                                                    <h5 className="font-semibold text-blue-800 mb-2 text-sm">Stream A Properties</h5>
+                                                    <div className="space-y-1 text-xs">
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Vapor Fraction</span>
+                                                            <span className="font-medium">0.00</span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Pressure</span>
+                                                            <span className="font-medium">{p1_psia.toFixed(0)} <span className="text-gray-400">psia</span></span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Temperature (Bubble Pt)</span>
+                                                            <span className="font-medium">{T_bubble.toFixed(1)} <span className="text-gray-400">°F</span></span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Mass Flow Rate</span>
+                                                            <span className="font-medium">{massFlowBasis.toLocaleString()} <span className="text-gray-400">lb/hr</span></span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Molar Flow Rate</span>
+                                                            <span className="font-medium">{molarFlowBasis.toFixed(1)} <span className="text-gray-400">lbmol/hr</span></span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Molar Heat Capacity</span>
+                                                            <span className="font-medium">{Cp_A.toFixed(2)} <span className="text-gray-400">Btu/lbmol·°F</span></span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Stream B Properties */}
+                                                <div className="bg-green-100 rounded-lg p-3">
+                                                    <h5 className="font-semibold text-green-800 mb-2 text-sm">Stream B Properties</h5>
+                                                    <div className="space-y-1 text-xs">
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Vapor Fraction (by mol)</span>
+                                                            <span className="font-medium">{(vaporFracB).toFixed(2)}</span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Pressure</span>
+                                                            <span className="font-medium">{p1_psia.toFixed(0)} <span className="text-gray-400">psia</span></span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Temperature (Dew Pt 5%)</span>
+                                                            <span className="font-medium">{T_B.toFixed(1)} <span className="text-gray-400">°F</span></span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Mass Flow Rate (Vaporized)</span>
+                                                            <span className="font-medium">{massVaporized.toFixed(0)} <span className="text-gray-400">lb/hr</span></span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Molar Flow Rate (Vaporized)</span>
+                                                            <span className="font-medium">{molesVaporized.toFixed(2)} <span className="text-gray-400">lbmol/hr</span></span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-600">Bulk Molar Heat Capacity</span>
+                                                            <span className="font-medium">{Cp_B.toFixed(2)} <span className="text-gray-400">Btu/lbmol·°F</span></span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Heat Calculations */}
+                                            <div className="mt-4 bg-white rounded-lg p-3 border border-purple-200">
+                                                <h5 className="font-semibold text-purple-800 mb-2 text-sm">Heat Input Calculations (per 1000 lb/hr basis)</h5>
+                                                <div className="space-y-1 text-xs">
+                                                    <div className="flex justify-between">
+                                                        <span className="text-gray-600">Total Heat Input (Q from fire, scaled)</span>
+                                                        <span className="font-medium">{Q_total_basis > 0 ? Q_total_basis.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} <span className="text-gray-400">Btu/hr</span></span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span className="text-gray-600">Sensible Heat Input (n×Cp×ΔT)</span>
+                                                        <span className="font-medium">{Q_sensible > 0 ? Q_sensible.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'} <span className="text-gray-400">Btu/hr</span></span>
+                                                    </div>
+                                                    <div className="flex justify-between border-t pt-1 mt-1">
+                                                        <span className="text-gray-700 font-medium">Multi-Comp Mass Latent Heat (Light Ends)</span>
+                                                        <span className="font-bold text-purple-700">{lambda_lightEnds > 0 ? lambda_lightEnds.toFixed(0) : '-'} <span className="text-gray-400">Btu/lb</span></span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
