@@ -623,8 +623,10 @@
                         cp_mix += (molPct / 100) * COMPONENTS[compId].cp;
                     }
                 });
-                // Convert J/(mol·K) to Btu/(lbmol·°F): multiply by 0.000429923
-                return totalMol > 0 ? (cp_mix * 100 / totalMol) * 0.000429923 : 20;
+                // Convert J/(mol·K) to Btu/(lbmol·°F):
+                // 1 J = 0.000947817 Btu, 1 K = 1.8 °F, 1 lbmol = 453.592 mol
+                // Factor = 0.000947817 / 1.8 * 453.592 = 0.2388
+                return totalMol > 0 ? (cp_mix * 100 / totalMol) * 0.2388 : 25;
             };
 
             // Calculate multi-component latent heat using Stream A/B method
