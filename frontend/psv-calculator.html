@@ -95,10 +95,34 @@
 
         // Scenarios - Updated per user request
         const SCENARIOS = [
-            { id: 'fire_wetted', label: '1A', name: 'Fire-Wetted (Liquid Boil up)', icon: '🔥', desc: 'Pool fire on vessel with liquid inventory causing vaporization', compLabel: 'Fire-Wetted Liquid Composition', presets: ['ngl', 'propane_pure', 'water_pure'] },
-            { id: 'fire_unwetted', label: '1B', name: 'Fire Unwetted (Vapor)', icon: '💨', desc: 'Fire exposure on vapor space only', compLabel: 'Fire Unwetted Vapor Composition', presets: ['natural_gas', 'rich_gas', 'water_pure'] },
-            { id: 'blocked_vapor', label: '2A', name: 'Blocked Outlet - Vapor', icon: '⛔', desc: 'Blocked vapor outlet with upstream source', compLabel: 'Blocked Outlet Vapor Composition', presets: ['natural_gas', 'rich_gas', 'water_pure'] },
-            { id: 'cv_failure', label: '3', name: 'CV Failure - Vapor', icon: '⚠️', desc: 'Control valve fails open, vapor service', compLabel: 'CV Failure Vapor Composition', presets: ['natural_gas', 'rich_gas', 'water_pure'] },
+            { id: 'fire_wetted', label: '1A', name: '1A - Fire-Wetted (Liquid Boil up)', icon: '🔥', desc: 'Pool fire on vessel with liquid inventory causing vaporization', compLabel: 'Fire-Wetted Liquid Composition', presets: ['ngl', 'propane_pure', 'water_pure'] },
+            { id: 'fire_unwetted', label: '1B', name: '1B - Fire-Unwetted (Vapor)', icon: '💨', desc: 'Fire exposure on vapor space only', compLabel: 'Fire Unwetted Vapor Composition', presets: ['natural_gas', 'rich_gas', 'water_pure'] },
+            { id: 'blocked_vapor', label: '2A', name: '2A - Blocked Outlet - Vapor', icon: '⛔', desc: 'Blocked vapor outlet with upstream source', compLabel: 'Blocked Outlet Vapor Composition', presets: ['natural_gas', 'rich_gas', 'water_pure'] },
+            { id: 'cv_failure', label: '3', name: '3 - CV Failure - Vapor', icon: '⚠️', desc: 'Control valve fails open, vapor service', compLabel: 'CV Failure Vapor Composition', presets: ['natural_gas', 'rich_gas', 'water_pure'] },
+        ];
+
+        // Bypass valve Cv lookup tables
+        const BYPASS_CV_GLOBE = [
+            { size: '1/2"', cv: 100 },
+            { size: '3/4"', cv: 192 },
+            { size: '1"', cv: 333 },
+            { size: '1.25"', cv: 607 },
+            { size: '1.5"', cv: 856 },
+            { size: '2"', cv: 1504 },
+            { size: '2.5"', cv: 2505 },
+            { size: '3"', cv: 3868 },
+            { size: '3.5"', cv: 5246 },
+            { size: '4"', cv: 6854 },
+        ];
+
+        const BYPASS_CV_BALL = [
+            { size: '1/2"', cv: 20 },
+            { size: '3/4"', cv: 49 },
+            { size: '1"', cv: 94 },
+            { size: '1.5"', cv: 239 },
+            { size: '2"', cv: 449 },
+            { size: '3"', cv: 1222 },
+            { size: '4"', cv: 2374 },
         ];
 
         // Simplified Peng-Robinson calculations (client-side)
@@ -386,6 +410,11 @@
                     xt: 0.7, // Pressure Drop Ratio Factor
                     upstream_pressure: 800, // psig (P1)
                     upstream_temp: 138, // °F (T1)
+                    // Bypass valve options
+                    has_bypass: false,
+                    bypass_valve_type: 'globe', // 'globe' or 'ball'
+                    bypass_size: '1"',
+                    use_bypass_flow: false, // If true, use bypass flow instead of CV flow
                 },
             });
 
@@ -732,10 +761,26 @@
 
                     // ISA volumetric flow equation: q = N7 * Cv * P1 * Y * sqrt(x / (Gg * T * Z))
                     const N7 = 1360; // For q in scfh, P in psia, T in °R
-                    const q = Gg > 0 && T1_R > 0 && Z > 0
+                    const q_cv = Gg > 0 && T1_R > 0 && Z > 0
                         ? N7 * Cv * P1_psia * Y * Math.sqrt(xEffective / (Gg * T1_R * Z))
                         : 0;
-                    const W = q * M / 379.5;
+                    const W_cv = q_cv * M / 379.5;
+
+                    // Bypass flow calculations if applicable
+                    let W = W_cv;
+                    if (cond.has_bypass && cond.use_bypass_flow) {
+                        const bypassCvTable = cond.bypass_valve_type === 'globe' ? BYPASS_CV_GLOBE : BYPASS_CV_BALL;
+                        const bypassCvEntry = bypassCvTable.find(v => v.size === cond.bypass_size);
+                        const bypassCv = bypassCvEntry ? bypassCvEntry.cv : 0;
+                        const bypassXT = 1.0;
+                        const bypassXChoked = Fk * bypassXT;
+                        const bypassXEffective = Math.min(x, bypassXChoked);
+                        const bypassY = Math.max(1 - bypassXEffective / (3 * Fk * bypassXT), 0.667);
+                        const q_bypass = Gg > 0 && T1_R > 0 && Z > 0
+                            ? N7 * bypassCv * P1_psia * bypassY * Math.sqrt(bypassXEffective / (Gg * T1_R * Z))
+                            : 0;
+                        W = q_bypass * M / 379.5;
+                    }
 
                     const C = getAPI520_C(k);
                     const requiredArea = W > 0 && M > 0 && P2_psia > 0
@@ -746,7 +791,7 @@
                         : 0;
 
                     scenarioResults.cv_failure = {
-                        applicable: true, label: '3', name: 'CV Failure - Vapor',
+                        applicable: true, label: '3', name: '3 - CV Failure - Vapor',
                         requiredFlow: W, ratedFlow: ratedLoad, requiredArea, ratedArea,
                         adequate: ratedArea >= requiredArea
                     };
@@ -793,10 +838,10 @@
 
                 // Scenario name lookup
                 const scenarioNames = {
-                    fire_wetted: 'Fire-Wetted (Liquid Boil up)',
-                    fire_unwetted: 'Fire Unwetted (Vapor)',
-                    blocked_vapor: 'Blocked Outlet - Vapor',
-                    cv_failure: 'CV Failure - Vapor'
+                    fire_wetted: '1A - Fire-Wetted (Liquid Boil up)',
+                    fire_unwetted: '1B - Fire-Unwetted (Vapor)',
+                    blocked_vapor: '2A - Blocked Outlet - Vapor',
+                    cv_failure: '3 - CV Failure - Vapor'
                 };
                 const controllingName = scenarioNames[results.controllingScenario] || results.controllingScenario;
 
@@ -938,10 +983,10 @@
 
                 // Convert scenarioResults object to array for PDF table
                 const allScenarios = [
-                    { id: 'fire_wetted', name: 'Fire-Wetted (Liquid Boil up)' },
-                    { id: 'fire_unwetted', name: 'Fire Unwetted (Vapor)' },
-                    { id: 'blocked_vapor', name: 'Blocked Outlet - Vapor' },
-                    { id: 'cv_failure', name: 'CV Failure - Vapor' }
+                    { id: 'fire_wetted', name: '1A - Fire-Wetted (Liquid Boil up)' },
+                    { id: 'fire_unwetted', name: '1B - Fire-Unwetted (Vapor)' },
+                    { id: 'blocked_vapor', name: '2A - Blocked Outlet - Vapor' },
+                    { id: 'cv_failure', name: '3 - CV Failure - Vapor' }
                 ];
 
                 // Get controlling scenario name for bolding
@@ -2181,20 +2226,38 @@
                                 const xChoked = Fk * XT;
                                 const xEffective = Math.min(x, xChoked);
 
-                                // Gas sizing coefficient Cg (for display)
-                                const Cg = Cv * 40 * Math.sqrt(XT);
-
                                 // Expansion factor Y (limited to 0.667 minimum)
                                 const Y = Math.max(1 - xEffective / (3 * Fk * XT), 0.667);
 
                                 // Volumetric flow q (scfh) - ISA equation with N7 = 1360
                                 const N7 = 1360; // For q in scfh, P in psia, T in °R
-                                const q = Gg > 0 && T1_R > 0 && Z > 0
+                                const q_cv = Gg > 0 && T1_R > 0 && Z > 0
                                     ? N7 * Cv * P1_psia * Y * Math.sqrt(xEffective / (Gg * T1_R * Z))
                                     : 0;
 
-                                // Mass flow W (lb/hr) = q * M / 379.5 (molar volume at STP)
-                                const W = q * M / 379.5;
+                                // CV Mass flow W (lb/hr) = q * M / 379.5 (molar volume at STP)
+                                const W_cv = q_cv * M / 379.5;
+
+                                // Bypass flow calculations
+                                const bypassCvTable = cond.bypass_valve_type === 'globe' ? BYPASS_CV_GLOBE : BYPASS_CV_BALL;
+                                const bypassCvEntry = bypassCvTable.find(v => v.size === cond.bypass_size);
+                                const bypassCv = bypassCvEntry ? bypassCvEntry.cv : 0;
+                                const bypassXT = 1.0; // Fixed for bypass valves
+
+                                const bypassXChoked = Fk * bypassXT;
+                                const bypassXEffective = Math.min(x, bypassXChoked);
+                                const bypassY = Math.max(1 - bypassXEffective / (3 * Fk * bypassXT), 0.667);
+                                const q_bypass = cond.has_bypass && Gg > 0 && T1_R > 0 && Z > 0
+                                    ? N7 * bypassCv * P1_psia * bypassY * Math.sqrt(bypassXEffective / (Gg * T1_R * Z))
+                                    : 0;
+                                const W_bypass = q_bypass * M / 379.5;
+
+                                // Use CV or Bypass flow based on checkbox
+                                const q = cond.has_bypass && cond.use_bypass_flow ? q_bypass : q_cv;
+                                const W = cond.has_bypass && cond.use_bypass_flow ? W_bypass : W_cv;
+
+                                // For display purposes, keep Cg based on CV
+                                const Cg = Cv * 40 * Math.sqrt(XT);
 
                                 // Calculate required area
                                 const C = getAPI520_C(k);
@@ -2387,6 +2450,108 @@
                                                 />
                                             </div>
                                         </div>
+                                    </div>
+
+                                    {/* Bypass Valve Section */}
+                                    <div className="mb-6">
+                                        <div className="flex items-center justify-between mb-3">
+                                            <h4 className="font-medium text-gray-700">Bypass Valve</h4>
+                                            <label className="flex items-center cursor-pointer">
+                                                <span className="text-sm text-gray-600 mr-3">Has Bypass Valve?</span>
+                                                <div className="relative">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={cond.has_bypass}
+                                                        onChange={(e) => updateScenarioCondition('cv_failure', 'has_bypass', e.target.checked)}
+                                                        className="sr-only"
+                                                    />
+                                                    <div className={`w-10 h-6 rounded-full transition ${cond.has_bypass ? 'bg-blue-600' : 'bg-gray-300'}`}></div>
+                                                    <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition transform ${cond.has_bypass ? 'translate-x-4' : ''}`}></div>
+                                                </div>
+                                            </label>
+                                        </div>
+
+                                        <div className={`grid grid-cols-2 gap-4 p-4 rounded-lg border ${cond.has_bypass ? 'bg-white border-gray-200' : 'bg-gray-100 border-gray-200 opacity-50'}`}>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Valve Type</label>
+                                                <select
+                                                    value={cond.bypass_valve_type}
+                                                    onChange={(e) => {
+                                                        updateScenarioCondition('cv_failure', 'bypass_valve_type', e.target.value);
+                                                        // Reset size to first available for new valve type
+                                                        const sizes = e.target.value === 'globe' ? BYPASS_CV_GLOBE : BYPASS_CV_BALL;
+                                                        updateScenarioCondition('cv_failure', 'bypass_size', sizes[0].size);
+                                                    }}
+                                                    disabled={!cond.has_bypass}
+                                                    className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none disabled:bg-gray-100"
+                                                >
+                                                    <option value="globe">Globe Valve</option>
+                                                    <option value="ball">Ball Valve</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                    Nominal Size (C<sub>v</sub>)
+                                                </label>
+                                                <select
+                                                    value={cond.bypass_size}
+                                                    onChange={(e) => updateScenarioCondition('cv_failure', 'bypass_size', e.target.value)}
+                                                    disabled={!cond.has_bypass}
+                                                    className="input-field w-full px-3 py-2 border rounded-lg focus:outline-none disabled:bg-gray-100"
+                                                >
+                                                    {(cond.bypass_valve_type === 'globe' ? BYPASS_CV_GLOBE : BYPASS_CV_BALL).map(v => (
+                                                        <option key={v.size} value={v.size}>{v.size} (Cv = {v.cv})</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        {/* Bypass Flow Calculation (shown when bypass exists) */}
+                                        {cond.has_bypass && (() => {
+                                            const bypassCvTable = cond.bypass_valve_type === 'globe' ? BYPASS_CV_GLOBE : BYPASS_CV_BALL;
+                                            const bypassCvEntry = bypassCvTable.find(v => v.size === cond.bypass_size);
+                                            const bypassCv = bypassCvEntry ? bypassCvEntry.cv : 0;
+                                            const bypassXT = 1.0; // Fixed for bypass valves
+
+                                            const bypassXChoked = Fk * bypassXT;
+                                            const bypassXEffective = Math.min(x, bypassXChoked);
+                                            const bypassY = Math.max(1 - bypassXEffective / (3 * Fk * bypassXT), 0.667);
+                                            const bypassQ = Gg > 0 && T1_R > 0 && Z > 0
+                                                ? N7 * bypassCv * P1_psia * bypassY * Math.sqrt(bypassXEffective / (Gg * T1_R * Z))
+                                                : 0;
+                                            const bypassW = bypassQ * M / 379.5;
+
+                                            return (
+                                                <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                                                    <div className="flex items-center justify-between mb-3">
+                                                        <h5 className="font-medium text-amber-800">Bypass Flow Calculation</h5>
+                                                        <label className="flex items-center cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={cond.use_bypass_flow}
+                                                                onChange={(e) => updateScenarioCondition('cv_failure', 'use_bypass_flow', e.target.checked)}
+                                                                className="w-4 h-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500"
+                                                            />
+                                                            <span className="ml-2 text-sm text-amber-700">Use bypass flow for sizing</span>
+                                                        </label>
+                                                    </div>
+                                                    <div className="grid grid-cols-3 gap-4 text-sm">
+                                                        <div>
+                                                            <p className="text-xs text-gray-500">Bypass C<sub>v</sub></p>
+                                                            <p className="font-semibold text-amber-700">{bypassCv}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs text-gray-500">Bypass Flow (q)</p>
+                                                            <p className="font-semibold text-amber-700">{bypassQ > 0 ? bypassQ.toLocaleString(undefined, {maximumFractionDigits: 0}) : '—'} <span className="text-xs">scfh</span></p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs text-gray-500">Bypass Mass Flow (W)</p>
+                                                            <p className="font-semibold text-amber-700">{bypassW > 0 ? bypassW.toLocaleString(undefined, {maximumFractionDigits: 0}) : '—'} <span className="text-xs">lb/hr</span></p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
 
                                     {/* Calculated Flow Values */}
