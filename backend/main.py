@@ -10,11 +10,10 @@ import os
 import stripe
 from fastapi import FastAPI, HTTPException, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 import uvicorn
-import hashlib
 import time
 
 from thermo_engine import get_properties, COMPONENTS, PRESETS
@@ -105,9 +104,26 @@ class PSVSizingResult(BaseModel):
     fluid_properties: ThermodynamicProperties
 
 
-# Endpoints
-@app.get("/")
+# Serve frontend
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+
+
+@app.get("/", response_class=HTMLResponse)
 async def root():
+    """Serve the PSV Calculator frontend"""
+    index_path = os.path.join(STATIC_DIR, "psv-calculator.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path, media_type="text/html")
+    # Fallback to API info if frontend not found
+    return HTMLResponse(
+        content="<h1>Franc Engineering PSV Calculator API</h1><p>Frontend not found. API docs at <a href='/docs'>/docs</a></p>",
+        status_code=200
+    )
+
+
+@app.get("/api")
+async def api_info():
+    """API info endpoint"""
     return {
         "message": "Franc Engineering PSV Calculator API",
         "version": "1.0.0",

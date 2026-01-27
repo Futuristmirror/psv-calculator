@@ -10,6 +10,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY backend/ .
 
+# Copy frontend files for static serving
+COPY frontend/ ./static/
+
 # Expose port (Railway sets PORT dynamically)
 EXPOSE ${PORT:-8000}
 
