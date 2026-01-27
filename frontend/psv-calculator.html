@@ -63,8 +63,10 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        // API Configuration - Update this for production
-        const API_BASE = ''; // Empty for local calculations, or 'https://your-api.railway.app'
+        // API Configuration - auto-detects when served from backend (Railway, etc.)
+        // When opened as local file (file://), payments are disabled.
+        // When served from a web server, uses same-origin API calls.
+        const API_BASE = window.location.protocol === 'file:' ? '' : window.location.origin;
 
         // Component Database
         // Component Database

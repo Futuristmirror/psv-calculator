@@ -10,7 +10,7 @@ import os
 import stripe
 from fastapi import FastAPI, HTTPException, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 import uvicorn
@@ -108,6 +108,10 @@ class PSVSizingResult(BaseModel):
 # Endpoints
 @app.get("/")
 async def root():
+    """Serve frontend if available, otherwise return API info"""
+    frontend_path = os.path.join(os.path.dirname(__file__), "frontend", "psv-calculator.html")
+    if os.path.exists(frontend_path):
+        return FileResponse(frontend_path, media_type="text/html")
     return {
         "message": "Franc Engineering PSV Calculator API",
         "version": "1.0.0",
@@ -450,5 +454,51 @@ async def health_check():
     return {"status": "healthy"}
 
 
+@app.get("/debug/config")
+async def debug_config():
+    """Debug endpoint to verify deployment configuration (non-sensitive)"""
+    frontend_path = os.path.join(os.path.dirname(__file__), "frontend", "psv-calculator.html")
+    return {
+        "stripe_configured": bool(stripe.api_key),
+        "stripe_key_prefix": stripe.api_key[:7] + "..." if stripe.api_key else "NOT SET",
+        "webhook_secret_set": bool(STRIPE_WEBHOOK_SECRET),
+        "frontend_url": FRONTEND_URL,
+        "frontend_file_exists": os.path.exists(frontend_path),
+        "port": os.getenv("PORT", "8000"),
+        "environment": os.getenv("RAILWAY_ENVIRONMENT", "local"),
+    }
+
+
+# Serve frontend HTML - this MUST be the last route (catch-all)
+@app.get("/app")
+async def serve_frontend():
+    """Serve the PSV Calculator frontend"""
+    frontend_path = os.path.join(os.path.dirname(__file__), "frontend", "psv-calculator.html")
+    if not os.path.exists(frontend_path):
+        raise HTTPException(status_code=404, detail=f"Frontend not found at {frontend_path}")
+    return FileResponse(frontend_path, media_type="text/html")
+
+
+@app.on_event("startup")
+async def startup_diagnostics():
+    """Log configuration status on startup"""
+    print("=" * 60)
+    print("PSV Calculator - Startup Diagnostics")
+    print("=" * 60)
+    print(f"  Stripe API Key: {'configured (' + stripe.api_key[:7] + '...)' if stripe.api_key else 'NOT SET'}")
+    print(f"  Stripe Webhook Secret: {'configured' if STRIPE_WEBHOOK_SECRET else 'NOT SET'}")
+    print(f"  Frontend URL: {FRONTEND_URL}")
+    print(f"  PORT: {os.getenv('PORT', '8000 (default)')}")
+    frontend_path = os.path.join(os.path.dirname(__file__), "frontend", "psv-calculator.html")
+    print(f"  Frontend file: {'FOUND' if os.path.exists(frontend_path) else 'MISSING'} at {frontend_path}")
+    print("=" * 60)
+    if not stripe.api_key:
+        print("  WARNING: STRIPE_SECRET_KEY is not set! Payment features will not work.")
+    if not STRIPE_WEBHOOK_SECRET:
+        print("  WARNING: STRIPE_WEBHOOK_SECRET is not set! Webhook verification disabled.")
+    print("=" * 60)
+
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run(app, host="0.0.0.0", port=port)
