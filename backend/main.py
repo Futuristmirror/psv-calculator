@@ -1,32 +1,36 @@
 """
 PSV Calculator API - FastAPI Backend
-
 REST API for PSV sizing calculations using Peng-Robinson EOS
-
 Author: Franc Engineering
 """
 
 import os
+import io
 import stripe
-from fastapi import FastAPI, HTTPException, Request, Header
+import uuid
+import base64
+from fastapi import FastAPI, HTTPException, Request, Header, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 import uvicorn
 import time
 
 from thermo_engine import get_properties, COMPONENTS, PRESETS
 from psv_sizing import calculate_psv_size, wetted_area_horizontal_vessel, wetted_area_vertical_vessel
+from pdf_generator import generate_psv_report
+from email_service import send_report_email, send_pe_review_notification
 
 # Stripe Configuration
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "https://psv-calculator-production.up.railway.app")
 
-# In-memory store for payment sessions (use Redis/DB in production)
-# Maps session_id -> { status, email, created_at, product }
-payment_sessions: Dict[str, Dict] = {}
+# In-memory stores (use Redis/DB in production)
+payment_sessions: Dict[str, Dict] = {}  # session_id -> { status, email, product, ... }
+free_report_users: Dict[str, bool] = {}  # email/fingerprint -> has_used_free_report
+uploaded_files: Dict[str, bytes] = {}  # file_id -> file_bytes (temporary storage)
 
 app = FastAPI(
     title="Franc Engineering PSV Calculator API",
@@ -49,17 +53,18 @@ app.add_middleware(
 )
 
 
-# Request/Response Models
+# ============================================================================
+# REQUEST/RESPONSE MODELS
+# ============================================================================
+
 class ComponentInput(BaseModel):
     name: str = Field(..., description="Component name (e.g., 'methane', 'propane')")
     mole_fraction: float = Field(..., ge=0, le=1, description="Mole fraction (0-1)")
-
 
 class FluidInput(BaseModel):
     components: List[ComponentInput] = Field(..., description="List of components with mole fractions")
     temperature_F: float = Field(..., description="Temperature in °F")
     pressure_psig: float = Field(..., description="Pressure in psig")
-
 
 class VesselInput(BaseModel):
     orientation: str = Field("horizontal", description="'horizontal' or 'vertical'")
@@ -68,45 +73,80 @@ class VesselInput(BaseModel):
     liquid_level_fraction: float = Field(0.5, ge=0, le=1, description="Liquid level as fraction of diameter")
     insulated: bool = Field(False, description="Whether vessel is insulated")
 
-
 class PSVSizingRequest(BaseModel):
     scenario: str = Field(..., description="Scenario: fire_wetted, fire_unwetted, blocked_vapor, blocked_liquid, cv_failure")
     set_pressure_psig: float = Field(..., gt=0, description="PSV set pressure in psig")
     back_pressure_psig: float = Field(0, ge=0, description="Back pressure in psig")
     fluid: FluidInput
     vessel: Optional[VesselInput] = None
-    flow_rate: Optional[float] = Field(None, description="Flow rate for blocked outlet scenarios (lb/hr for vapor, gpm for liquid)")
+    flow_rate: Optional[float] = Field(None, description="Flow rate for blocked outlet scenarios")
     latent_heat_btu_lb: Optional[float] = Field(None, description="Latent heat for fire cases (BTU/lb)")
 
+class DeviceInfo(BaseModel):
+    tag: str = Field(..., description="Relief device tag")
+    pid_number: Optional[str] = None
+    facility_name: Optional[str] = None
+    protected_system: Optional[str] = None
+    mawp_psig: Optional[float] = None
+    orifice_selection: Optional[str] = None
+    new_or_existing: Optional[str] = "New Installation"
+    discharge_location: Optional[str] = "Atmosphere"
+    set_pressure_psig: Optional[float] = None
+    psv_type: Optional[str] = "Conventional"
 
-class ThermodynamicProperties(BaseModel):
-    mw: float
-    Z: float
-    density_kg_m3: float
-    gamma: float
-    lfl_percent: Optional[float]
-    ufl_percent: Optional[float]
-    phase: str
+class ScenarioInfo(BaseModel):
+    scenario_type: str
+    description: Optional[str] = None
+    back_pressure_psig: Optional[float] = 0
+    vessel_orientation: Optional[str] = None
+    vessel_diameter: Optional[float] = None
+    vessel_length: Optional[float] = None
+    liquid_level: Optional[float] = None
+    insulated: Optional[bool] = None
+    flow_rate: Optional[float] = None
+
+class ReportRequest(BaseModel):
+    device_info: DeviceInfo
+    scenario_info: ScenarioInfo
+    fluid_info: Dict[str, Any]
+    calculation_results: Dict[str, Any]
+    customer_email: Optional[str] = None
+    attachment_ids: Optional[List[str]] = None  # IDs of uploaded files
+
+class CreateCheckoutRequest(BaseModel):
+    product: str = Field(..., description="Product type: 'standard_report' or 'pe_reviewed'")
+    email: Optional[str] = Field(None, description="Customer email for receipt")
+    customer_name: Optional[str] = Field(None, description="Customer name")
+    customer_notes: Optional[str] = Field(None, description="Additional notes for PE review")
+    report_data: Optional[Dict[str, Any]] = Field(None, description="Full report data to store")
+    success_url: Optional[str] = None
+    cancel_url: Optional[str] = None
+
+class CheckoutResponse(BaseModel):
+    checkout_url: str
+    session_id: str
 
 
-class PSVSizingResult(BaseModel):
-    scenario: str
-    relief_rate: float
-    relief_rate_units: str
-    relieving_pressure_psia: float
-    required_area_in2: float
-    selected_orifice: str
-    orifice_area_in2: float
-    percent_utilization: float
-    flow_type: Optional[str]
-    heat_input_mmbtu_hr: Optional[float]
-    wetted_area_ft2: Optional[float]
-    fluid_properties: ThermodynamicProperties
+# Product pricing configuration
+PRODUCTS = {
+    "standard_report": {
+        "name": "PSV Calculator - Standard Report",
+        "description": "Full PDF calculation package with all inputs documented",
+        "price_cents": 9900,  # $99.00
+    },
+    "pe_reviewed": {
+        "name": "PSV Calculator - PE-Reviewed Report", 
+        "description": "Engineer stamped report with PE (TX/CO) review, 48-72hr delivery",
+        "price_cents": 49900,  # $499.00
+    }
+}
 
 
-# Serve frontend
+# ============================================================================
+# SERVE FRONTEND
+# ============================================================================
+
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
-
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
@@ -114,12 +154,15 @@ async def root():
     index_path = os.path.join(STATIC_DIR, "psv-calculator.html")
     if os.path.exists(index_path):
         return FileResponse(index_path, media_type="text/html")
-    # Fallback to API info if frontend not found
     return HTMLResponse(
         content="<h1>Franc Engineering PSV Calculator API</h1><p>Frontend not found. API docs at <a href='/docs'>/docs</a></p>",
         status_code=200
     )
 
+
+# ============================================================================
+# API INFO & COMPONENTS
+# ============================================================================
 
 @app.get("/api")
 async def api_info():
@@ -129,7 +172,6 @@ async def api_info():
         "version": "1.0.0",
         "docs": "/docs"
     }
-
 
 @app.get("/components")
 async def list_components():
@@ -148,31 +190,31 @@ async def list_components():
         ]
     }
 
-
 @app.get("/presets")
 async def list_presets():
     """Get list of fluid presets"""
     return {"presets": PRESETS}
 
 
+# ============================================================================
+# THERMODYNAMIC CALCULATIONS
+# ============================================================================
+
 @app.post("/properties")
 async def calculate_properties(fluid: FluidInput) -> Dict:
     """Calculate thermodynamic properties for a fluid mixture"""
     try:
-        # Convert to lists
         components = [c.name.lower() for c in fluid.components]
         mole_fractions = [c.mole_fraction for c in fluid.components]
-
-        # Normalize mole fractions
+        
         total = sum(mole_fractions)
         mole_fractions = [x / total for x in mole_fractions]
-
-        # Convert units
+        
         T_K = (fluid.temperature_F + 459.67) * 5/9
         P_Pa = (fluid.pressure_psig + 14.7) * 6894.76
-
+        
         props = get_properties(components, mole_fractions, T_K, P_Pa)
-
+        
         return {
             "molecular_weight": round(props["mw"], 2),
             "compressibility_Z": round(props["Z"], 4),
@@ -188,25 +230,25 @@ async def calculate_properties(fluid: FluidInput) -> Dict:
         raise HTTPException(status_code=400, detail=str(e))
 
 
+# ============================================================================
+# PSV SIZING
+# ============================================================================
+
 @app.post("/size-psv")
 async def size_psv(request: PSVSizingRequest) -> Dict:
     """Calculate PSV sizing for specified scenario"""
     try:
-        # Get fluid properties
         components = [c.name.lower() for c in request.fluid.components]
         mole_fractions = [c.mole_fraction for c in request.fluid.components]
-
-        # Normalize
+        
         total = sum(mole_fractions)
         mole_fractions = [x / total for x in mole_fractions]
-
-        # Convert units
+        
         T_K = (request.fluid.temperature_F + 459.67) * 5/9
         P_Pa = (request.fluid.pressure_psig + 14.7) * 6894.76
-
+        
         props = get_properties(components, mole_fractions, T_K, P_Pa)
-
-        # Calculate wetted area if vessel provided
+        
         vessel_props = {}
         if request.vessel:
             if request.vessel.orientation == "horizontal":
@@ -222,25 +264,22 @@ async def size_psv(request: PSVSizingRequest) -> Dict:
                     request.vessel.length_ft,
                     liquid_height
                 )
-
             vessel_props = {
                 "wetted_area_ft2": wetted_area,
-                "surface_area_ft2": wetted_area * 1.5,  # Approximate total
+                "surface_area_ft2": wetted_area * 1.5,
                 "insulated": request.vessel.insulated,
                 "F_env": 0.3 if request.vessel.insulated else 1.0
             }
-
-        # Prepare fluid properties for sizing
+        
         fluid_props = {
             "MW": props["mw"],
             "Z": props["Z"],
             "gamma": props["gamma"],
             "T_F": request.fluid.temperature_F,
-            "latent_heat_btu_lb": request.latent_heat_btu_lb or 150,  # Default
-            "specific_gravity": props["density"] / 1000  # Relative to water
+            "latent_heat_btu_lb": request.latent_heat_btu_lb or 150,
+            "specific_gravity": props["density"] / 1000
         }
-
-        # Calculate sizing
+        
         result = calculate_psv_size(
             scenario=request.scenario,
             set_pressure_psig=request.set_pressure_psig,
@@ -249,8 +288,7 @@ async def size_psv(request: PSVSizingRequest) -> Dict:
             flow_rate=request.flow_rate,
             back_pressure_psig=request.back_pressure_psig
         )
-
-        # Add fluid properties to result
+        
         result["fluid_properties"] = {
             "mw": round(props["mw"], 2),
             "Z": round(props["Z"], 4),
@@ -260,12 +298,10 @@ async def size_psv(request: PSVSizingRequest) -> Dict:
             "ufl_percent": round(props["ufl"], 2) if props["ufl"] else None,
             "phase": props["flash"]["phase"]
         }
-
+        
         return result
-
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-
 
 @app.get("/orifices")
 async def list_orifices():
@@ -283,53 +319,138 @@ async def list_orifices():
     }
 
 
-# Stripe Payment Models
-class CreateCheckoutRequest(BaseModel):
-    product: str = Field(..., description="Product type: 'standard_report' or 'pe_reviewed'")
-    email: Optional[str] = Field(None, description="Customer email for receipt")
-    success_url: Optional[str] = Field(None, description="URL to redirect after successful payment")
-    cancel_url: Optional[str] = Field(None, description="URL to redirect if payment cancelled")
+# ============================================================================
+# FILE UPLOAD
+# ============================================================================
 
-
-class CheckoutResponse(BaseModel):
-    checkout_url: str
-    session_id: str
-
-
-# Product pricing configuration
-PRODUCTS = {
-    "standard_report": {
-        "name": "PSV Calculator - Standard Report",
-        "description": "Full PDF calculation package with all inputs documented",
-        "price_cents": 9900,  # $99.00
-    },
-    "pe_reviewed": {
-        "name": "PSV Calculator - PE-Reviewed Report",
-        "description": "Engineer stamped report with PE (TX/CO) review, 48-72hr delivery",
-        "price_cents": 49900,  # $499.00
+@app.post("/upload-file")
+async def upload_file(file: UploadFile = File(...)):
+    """
+    Upload a PDF file (P&ID or miscellaneous document)
+    Returns a file_id to reference in report generation
+    """
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are accepted")
+    
+    # Read file content
+    content = await file.read()
+    
+    # Limit file size (10MB)
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File size exceeds 10MB limit")
+    
+    # Generate unique ID
+    file_id = str(uuid.uuid4())
+    
+    # Store file (in production, use S3 or similar)
+    uploaded_files[file_id] = content
+    
+    return {
+        "file_id": file_id,
+        "filename": file.filename,
+        "size_bytes": len(content)
     }
-}
 
+
+# ============================================================================
+# PDF REPORT GENERATION
+# ============================================================================
+
+@app.post("/generate-report")
+async def generate_report(request: ReportRequest):
+    """
+    Generate a PDF report
+    
+    First report per user is FREE, subsequent reports require payment
+    """
+    user_identifier = request.customer_email or "anonymous"
+    
+    # Check if user has already used free report
+    has_used_free = free_report_users.get(user_identifier, False)
+    
+    # Collect any uploaded attachments
+    attachments = []
+    if request.attachment_ids:
+        for file_id in request.attachment_ids:
+            if file_id in uploaded_files:
+                attachments.append(uploaded_files[file_id])
+    
+    try:
+        # Generate the PDF
+        pdf_bytes = generate_psv_report(
+            device_info=request.device_info.model_dump(),
+            scenario_info=request.scenario_info.model_dump(),
+            fluid_info=request.fluid_info,
+            calculation_results=request.calculation_results,
+            attachments=attachments if attachments else None,
+            customer_email=request.customer_email,
+        )
+        
+        # Mark that user has used their free report
+        if not has_used_free and request.customer_email:
+            free_report_users[user_identifier] = True
+        
+        # Send email if provided
+        if request.customer_email:
+            send_report_email(
+                to_email=request.customer_email,
+                pdf_bytes=pdf_bytes,
+                device_tag=request.device_info.tag,
+                report_type="standard",
+            )
+        
+        # Return PDF as download
+        return StreamingResponse(
+            io.BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=PSV_Report_{request.device_info.tag}.pdf"
+            }
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
+
+
+@app.get("/check-free-report")
+async def check_free_report(email: str):
+    """Check if a user has already used their free report"""
+    has_used = free_report_users.get(email, False)
+    return {
+        "email": email,
+        "has_used_free_report": has_used,
+        "can_generate_free": not has_used
+    }
+
+
+# ============================================================================
+# STRIPE PAYMENT
+# ============================================================================
 
 @app.post("/create-checkout-session")
 async def create_checkout_session(request: CreateCheckoutRequest):
     """Create a Stripe Checkout session for payment"""
     if not stripe.api_key:
-        raise HTTPException(status_code=500, detail="Stripe not configured. Set STRIPE_SECRET_KEY environment variable.")
-
+        raise HTTPException(
+            status_code=500, 
+            detail="Stripe not configured. Set STRIPE_SECRET_KEY environment variable."
+        )
+    
     product = PRODUCTS.get(request.product)
     if not product:
-        raise HTTPException(status_code=400, detail=f"Invalid product. Choose from: {list(PRODUCTS.keys())}")
-
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid product. Choose from: {list(PRODUCTS.keys())}"
+        )
+    
     try:
-        # Build success/cancel URLs
         success_url = request.success_url or f"{FRONTEND_URL}?payment=success&session_id={{CHECKOUT_SESSION_ID}}"
         cancel_url = request.cancel_url or f"{FRONTEND_URL}?payment=cancelled"
-
-        # Create Stripe Checkout Session
-        checkout_session = stripe.checkout.Session.create(
-            payment_method_types=["card"],
-            line_items=[{
+        
+        # For PE-reviewed, collect additional info
+        checkout_params = {
+            "payment_method_types": ["card"],
+            "line_items": [{
                 "price_data": {
                     "currency": "usd",
                     "product_data": {
@@ -340,28 +461,39 @@ async def create_checkout_session(request: CreateCheckoutRequest):
                 },
                 "quantity": 1,
             }],
-            mode="payment",
-            success_url=success_url,
-            cancel_url=cancel_url,
-            customer_email=request.email,
-            metadata={
+            "mode": "payment",
+            "success_url": success_url,
+            "cancel_url": cancel_url,
+            "customer_email": request.email,
+            "metadata": {
                 "product": request.product,
+                "customer_name": request.customer_name or "",
+                "customer_notes": request.customer_notes or "",
             }
-        )
-
-        # Store session for verification
+        }
+        
+        # For PE-reviewed, add billing address collection
+        if request.product == "pe_reviewed":
+            checkout_params["billing_address_collection"] = "required"
+        
+        checkout_session = stripe.checkout.Session.create(**checkout_params)
+        
+        # Store session with report data
         payment_sessions[checkout_session.id] = {
             "status": "pending",
             "product": request.product,
             "email": request.email,
+            "customer_name": request.customer_name,
+            "customer_notes": request.customer_notes,
+            "report_data": request.report_data,
             "created_at": time.time(),
         }
-
+        
         return CheckoutResponse(
             checkout_url=checkout_session.url,
             session_id=checkout_session.id
         )
-
+        
     except stripe.error.StripeError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -370,11 +502,9 @@ async def create_checkout_session(request: CreateCheckoutRequest):
 async def stripe_webhook(request: Request, stripe_signature: str = Header(None)):
     """Handle Stripe webhook events"""
     if not STRIPE_WEBHOOK_SECRET:
-        # In development, accept all webhooks
         payload = await request.json()
         event = stripe.Event.construct_from(payload, stripe.api_key)
     else:
-        # In production, verify webhook signature
         payload = await request.body()
         try:
             event = stripe.Webhook.construct_event(
@@ -384,64 +514,74 @@ async def stripe_webhook(request: Request, stripe_signature: str = Header(None))
             raise HTTPException(status_code=400, detail="Invalid payload")
         except stripe.error.SignatureVerificationError:
             raise HTTPException(status_code=400, detail="Invalid signature")
-
-    # Handle the event
+    
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
         session_id = session["id"]
-
+        
         # Update payment status
         if session_id in payment_sessions:
             payment_sessions[session_id]["status"] = "completed"
             payment_sessions[session_id]["customer_email"] = session.get("customer_email")
+            
+            # If PE-reviewed, send notification
+            session_data = payment_sessions[session_id]
+            if session_data.get("product") == "pe_reviewed":
+                report_data = session_data.get("report_data", {})
+                device_tag = report_data.get("device_info", {}).get("tag", "Unknown")
+                
+                send_pe_review_notification(
+                    customer_email=session.get("customer_email"),
+                    device_tag=device_tag,
+                    customer_name=session_data.get("customer_name"),
+                    customer_notes=session_data.get("customer_notes"),
+                    report_data=report_data,
+                )
         else:
-            # Session wasn't tracked, add it now
             payment_sessions[session_id] = {
                 "status": "completed",
                 "product": session.get("metadata", {}).get("product", "standard_report"),
                 "email": session.get("customer_email"),
                 "created_at": time.time(),
             }
-
+        
         print(f"Payment completed for session: {session_id}")
-
+        
     elif event["type"] == "checkout.session.expired":
         session = event["data"]["object"]
         session_id = session["id"]
         if session_id in payment_sessions:
             payment_sessions[session_id]["status"] = "expired"
-
+    
     return {"status": "ok"}
 
 
 @app.get("/verify-payment/{session_id}")
 async def verify_payment(session_id: str):
     """Verify if a payment session has been completed"""
-    # First check our local cache
     if session_id in payment_sessions:
         session_data = payment_sessions[session_id]
         return {
             "valid": session_data["status"] == "completed",
             "status": session_data["status"],
             "product": session_data.get("product"),
+            "report_data": session_data.get("report_data"),
         }
-
-    # If not in cache, check with Stripe directly
+    
     if not stripe.api_key:
         raise HTTPException(status_code=500, detail="Stripe not configured")
-
+    
     try:
         session = stripe.checkout.Session.retrieve(session_id)
         is_paid = session.payment_status == "paid"
-
-        # Cache the result
+        
         payment_sessions[session_id] = {
             "status": "completed" if is_paid else session.status,
             "product": session.metadata.get("product", "standard_report"),
             "email": session.customer_email,
             "created_at": time.time(),
         }
-
+        
         return {
             "valid": is_paid,
             "status": session.payment_status,
@@ -453,12 +593,16 @@ async def verify_payment(session_id: str):
 
 @app.get("/payment-status")
 async def payment_status():
-    """Check if Stripe is configured (for frontend to know if payments are enabled)"""
+    """Check if Stripe is configured"""
     return {
         "stripe_configured": bool(stripe.api_key),
         "products": PRODUCTS if stripe.api_key else {},
     }
 
+
+# ============================================================================
+# HEALTH CHECK
+# ============================================================================
 
 @app.get("/health")
 async def health_check():
