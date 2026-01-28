@@ -12,6 +12,7 @@ import uuid
 import base64
 from fastapi import FastAPI, HTTPException, Request, Header, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
@@ -42,7 +43,7 @@ app = FastAPI(
         "email": "info@franceng.com"
     }
 )
-
+app.mount("/static", StaticFiles(directory="static"), name="static")
 # CORS for frontend access
 app.add_middleware(
     CORSMiddleware,
