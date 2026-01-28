@@ -43,7 +43,7 @@ app = FastAPI(
         "email": "info@franceng.com"
     }
 )
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory="."), name="static")
 # CORS for frontend access
 app.add_middleware(
     CORSMiddleware,
