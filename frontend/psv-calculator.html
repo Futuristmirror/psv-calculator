@@ -1271,7 +1271,68 @@
                 stripeConfigured: false,
             });
             const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+// ============================================
+            // AUTO-SAVE & RESTORE STATE (1 hour expiry)
+            // ============================================
+            const STORAGE_KEY = 'psv_calculator_state';
+            const EXPIRY_MS = 60 * 60 * 1000; // 1 hour
 
+            // Save all form state to localStorage
+            const saveStateToStorage = () => {
+                const state = {
+                    deviceInfo,
+                    reportInfo,
+                    scenarioSelections,
+                    scenarioConditions,
+                    vesselDetails,
+                    compositions,
+                    results,
+                    step,
+                    timestamp: Date.now()
+                };
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            };
+
+            // Auto-save whenever any state changes
+            useEffect(() => {
+                // Don't save if we're on step 1 with no data entered
+                if (step === 1 && !deviceInfo.tag && !deviceInfo.facility_name) return;
+                saveStateToStorage();
+            }, [deviceInfo, reportInfo, scenarioSelections, scenarioConditions, vesselDetails, compositions, results, step]);
+
+            // Restore state on initial load
+            useEffect(() => {
+                try {
+                    const saved = localStorage.getItem(STORAGE_KEY);
+                    if (saved) {
+                        const parsed = JSON.parse(saved);
+                        // Check if data is less than 1 hour old
+                        if (parsed.timestamp && (Date.now() - parsed.timestamp) < EXPIRY_MS) {
+                            if (parsed.deviceInfo) setDeviceInfo(parsed.deviceInfo);
+                            if (parsed.reportInfo) setReportInfo(parsed.reportInfo);
+                            if (parsed.scenarioSelections) setScenarioSelections(parsed.scenarioSelections);
+                            if (parsed.scenarioConditions) setScenarioConditions(parsed.scenarioConditions);
+                            if (parsed.vesselDetails) setVesselDetails(parsed.vesselDetails);
+                            if (parsed.compositions) setCompositions(parsed.compositions);
+                            if (parsed.results) setResults(parsed.results);
+                            if (parsed.step) setStep(parsed.step);
+                            console.log('Restored saved state from', new Date(parsed.timestamp).toLocaleTimeString());
+                        } else {
+                            // Data expired, clear it
+                            localStorage.removeItem(STORAGE_KEY);
+                            console.log('Saved state expired, cleared');
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error restoring state:', e);
+                }
+            }, []); // Only run once on mount
+
+            // Clear saved state after successful payment/report generation
+            const clearSavedState = () => {
+                localStorage.removeItem(STORAGE_KEY);
+                console.log('Cleared saved state');
+            };
             // Check for payment success on page load
             useEffect(() => {
                 const urlParams = new URLSearchParams(window.location.search);
