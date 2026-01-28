@@ -3151,7 +3151,7 @@ doc.save(filename);
                                         className={`step-indicator w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-semibold cursor-pointer text-sm sm:text-base
                                             ${step >= s ? 'franc-accent-bg text-white' : 'bg-gray-200 text-gray-500'}
                                             ${step === s ? 'active ring-4 ring-blue-200' : ''}`}
-                                        onClick={() => s < step && setStep(s)}
+                                        onClick={() => (s < step || (step === 0 && s === 1)) && setStep(s)}
                                     >
                                         {s}
                                     </div>
@@ -3197,12 +3197,14 @@ doc.save(filename);
                                     >
                                         ⬇️ Download Example
                                     </a>
-                                    <button 
-                                        onClick={() => setStep(1)}
-                                        className="inline-block ml-3 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition"
-                                    >
-                                        Get Started →
-                                    </button>
+                                    <div className="mt-4">
+                                        <button 
+                                            onClick={() => setStep(1)}
+                                            className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition text-lg"
+                                        >
+                                            Get Started →
+                                        </button>
+                                    </div>
                                 </div>
                                 <div className="lg:w-2/3">
                                     <div className={`rounded-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
