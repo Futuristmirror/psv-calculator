@@ -100,7 +100,7 @@ class CheckoutResponse(BaseModel):
 # Product pricing configuration
 PRODUCTS = {
     "standard_report": {
-        "name": "PSV Calculator - Standard Report",
+        "name": "PSV Calculator - Professional Report",
         "description": "Full PDF calculation package with all inputs documented",
         "price_cents": 9900,  # $99.00
     },
