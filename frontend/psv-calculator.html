@@ -2873,7 +2873,129 @@
                     alert('Error generating PDF: ' + error.message);
                 }
             };
+// Generate Report using Backend API (with proper PDF attachments)
+            const generateReportWithBackend = async () => {
+                if (!results) {
+                    alert('No results to generate report. Please complete calculations first.');
+                    return;
+                }
 
+                // Check for email (one free report per email)
+                let userEmail = localStorage.getItem('psv_user_email');
+                if (!userEmail) {
+                    userEmail = prompt('Enter your email to generate your free report:');
+                    if (!userEmail || !userEmail.includes('@')) {
+                        alert('Valid email required to generate report.');
+                        return;
+                    }
+                    localStorage.setItem('psv_user_email', userEmail);
+                }
+
+                try {
+                    // Check if user has already used free report
+                    const checkResponse = await fetch(`${API_BASE}/check-free-report?email=${encodeURIComponent(userEmail)}`);
+                    const checkData = await checkResponse.json();
+                    
+                    if (!checkData.can_generate_free) {
+                        const proceed = confirm('You have already used your free report. Would you like to purchase another report for $99?');
+                        if (proceed) {
+                            initiateCheckout('standard_report');
+                        }
+                        return;
+                    }
+
+                    // Show loading state
+                    const btn = document.querySelector('[data-generate-btn]');
+                    const originalText = btn ? btn.textContent : '';
+                    if (btn) {
+                        btn.textContent = 'Generating...';
+                        btn.disabled = true;
+                    }
+
+                    // Upload P&ID file if present
+                    let pidFileId = null;
+                    if (pidFile) {
+                        const formData = new FormData();
+                        formData.append('file', pidFile);
+                        formData.append('file_type', 'pid');
+                        const uploadResponse = await fetch(`${API_BASE}/upload-file`, {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const uploadData = await uploadResponse.json();
+                        pidFileId = uploadData.file_id;
+                    }
+
+                    // Upload misc file if present
+                    let miscFileId = null;
+                    if (miscFile) {
+                        const formData = new FormData();
+                        formData.append('file', miscFile);
+                        formData.append('file_type', 'misc');
+                        const uploadResponse = await fetch(`${API_BASE}/upload-file`, {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const uploadData = await uploadResponse.json();
+                        miscFileId = uploadData.file_id;
+                    }
+
+                    // Prepare report data
+                    const reportData = {
+                        email: userEmail,
+                        device_info: deviceInfo,
+                        report_info: reportInfo,
+                        vessel_details: vesselDetails,
+                        scenario_selections: scenarioSelections,
+                        scenario_conditions: scenarioConditions,
+                        compositions: compositions,
+                        results: results,
+                        pid_file_id: pidFileId,
+                        misc_file_id: miscFileId
+                    };
+
+                    // Generate report
+                    const response = await fetch(`${API_BASE}/generate-report`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(reportData)
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.detail || 'Failed to generate report');
+                    }
+
+                    // Download the PDF
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${deviceInfo.tag || 'PSV'}_Report_${new Date().toISOString().split('T')[0]}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+
+                    // Track that user has used their free report
+                    trackReportGeneration();
+
+                    alert('Report generated successfully!');
+
+                } catch (error) {
+                    console.error('Report generation error:', error);
+                    alert('Error generating report: ' + error.message + '\n\nFalling back to local generation...');
+                    // Fallback to local generation
+                    generateReport();
+                } finally {
+                    // Reset button state
+                    const btn = document.querySelector('[data-generate-btn]');
+                    if (btn) {
+                        btn.textContent = 'Generate FREE Report';
+                        btn.disabled = false;
+                    }
+                }
+            };
             // Check if all applicable scenarios have valid compositions (>=99%)
             const allCompositionsValid = calculableScenarios.every(s => getTotalMol(s.id) >= 99);
 
