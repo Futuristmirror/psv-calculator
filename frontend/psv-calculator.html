@@ -2973,43 +2973,6 @@
                 } finally {
                     // Reset button state
                     const btn = document.querySelector('[data-generate-btn]');
-                    if (btn) {
-                        btn.textContent = 'Generate Report';
-                        btn.disabled = false;
-                    }
-                }
-            };
-
-                    if (!response.ok) {
-                        const error = await response.json();
-                        throw new Error(error.detail || 'Failed to generate report');
-                    }
-
-                    // Download the PDF
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `${deviceInfo.tag || 'PSV'}_Report_${new Date().toISOString().split('T')[0]}.pdf`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    window.URL.revokeObjectURL(url);
-
-                    // Track that user has used their free report
-                    trackReportGeneration();
-
-                    alert('Report generated successfully!');
-
-                } catch (error) {
-                    console.error('Report generation error:', error);
-                    alert('Error generating report: ' + error.message + '\n\nFalling back to local generation...');
-                    // Fallback to local generation
-                    generateReport();
-                } finally {
-                    // Reset button state
-                    const btn = document.querySelector('[data-generate-btn]');
-                    if (btn) {
                         btn.textContent = 'Generate FREE Report';
                         btn.disabled = false;
                     }
