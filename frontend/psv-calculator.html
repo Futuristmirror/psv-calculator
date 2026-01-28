@@ -3117,24 +3117,7 @@ doc.save(filename);
                                 onClick={() => {
                                     if (window.confirm('Are you sure you want to clear all data? This cannot be undone.')) {
                                         localStorage.removeItem('psv_calculator_state');
-                                        setStep(1);
-                                        setDeviceInfo({
-                                            tag: '', pid_number: '', facility_name: '', protected_system: '', mawp: '',
-                                            selected_orifice: '', new_or_existing: 'new', discharge_location: 'atmosphere',
-                                            set_pressure: '', psv_type: 'conventional', client: '', plant: '', project: '',
-                                            project_no: '', manufacturer: '', model_number: '', serial_number: '',
-                                            inlet_pipe_size: '', inlet_pipe_schedule: 'XS', inlet_connection_rating: 'CL 150',
-                                            outlet_pipe_size: '', outlet_pipe_schedule: 'XS', outlet_connection_rating: 'CL 150',
-                                            showProjectDetails: false
-                                        });
-                                        setReportInfo({ engineered_by: '', checked_by: '', revision: 'A', revision_date: new Date().toLocaleDateString(), revision_history: [] });
-                                        setScenarioSelections({});
-                                        setScenarioConditions({});
-                                        setVesselDetails({});
-                                        setCompositions({});
-                                        setResults(null);
-                                        setPidFile(null);
-                                        setMiscFile(null);
+                                        window.location.reload();
                                     }
                                 }}
                                 className={`p-2 rounded-lg transition ${darkMode ? 'bg-gray-700 text-red-400 hover:bg-gray-600' : 'bg-gray-100 text-red-600 hover:bg-gray-200'}`}
