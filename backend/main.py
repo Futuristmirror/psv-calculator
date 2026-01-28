@@ -1,4 +1,4 @@
-# Force redeploy v2
+# Force redeploy v3
 """
 PSV Calculator API - FastAPI Backend
 REST API for PSV sizing calculations using Peng-Robinson EOS
@@ -83,36 +83,27 @@ class PSVSizingRequest(BaseModel):
     flow_rate: Optional[float] = Field(None, description="Flow rate for blocked outlet scenarios")
     latent_heat_btu_lb: Optional[float] = Field(None, description="Latent heat for fire cases (BTU/lb)")
 
-class DeviceInfo(BaseModel):
-    tag: str = Field(..., description="Relief device tag")
-    pid_number: Optional[str] = None
-    facility_name: Optional[str] = None
-    protected_system: Optional[str] = None
-    mawp_psig: Optional[float] = None
-    orifice_selection: Optional[str] = None
-    new_or_existing: Optional[str] = "New Installation"
-    discharge_location: Optional[str] = "Atmosphere"
-    set_pressure_psig: Optional[float] = None
-    psv_type: Optional[str] = "Conventional"
 
-class ScenarioInfo(BaseModel):
-    scenario_type: str
-    description: Optional[str] = None
-    back_pressure_psig: Optional[float] = 0
-    vessel_orientation: Optional[str] = None
-    vessel_diameter: Optional[float] = None
-    vessel_length: Optional[float] = None
-    liquid_level: Optional[float] = None
-    insulated: Optional[bool] = None
-    flow_rate: Optional[float] = None
+# ============================================================================
+# FLEXIBLE REPORT REQUEST MODEL (matches frontend)
+# ============================================================================
 
-class ReportRequest(BaseModel):
-    device_info: DeviceInfo
-    scenario_info: ScenarioInfo
-    fluid_info: Dict[str, Any]
-    calculation_results: Dict[str, Any]
-    customer_email: Optional[str] = None
-    attachment_ids: Optional[List[str]] = None  # IDs of uploaded files
+class FrontendReportRequest(BaseModel):
+    """
+    Flexible model that accepts the frontend's data structure directly.
+    This avoids having to transform data on the frontend.
+    """
+    email: str = Field(..., description="Customer email")
+    device_info: Dict[str, Any] = Field(..., description="Device information from frontend")
+    report_info: Optional[Dict[str, Any]] = Field(default={}, description="Report metadata")
+    vessel_details: Optional[Dict[str, Any]] = Field(default={}, description="Vessel dimensions")
+    scenario_selections: Optional[Dict[str, Any]] = Field(default={}, description="Which scenarios are applicable")
+    scenario_conditions: Optional[Dict[str, Any]] = Field(default={}, description="Conditions for each scenario")
+    compositions: Optional[Dict[str, Any]] = Field(default={}, description="Fluid compositions per scenario")
+    results: Optional[Dict[str, Any]] = Field(default={}, description="Calculation results")
+    pid_file_id: Optional[str] = Field(default=None, description="Uploaded P&ID file ID")
+    misc_file_id: Optional[str] = Field(default=None, description="Uploaded misc file ID")
+
 
 class CreateCheckoutRequest(BaseModel):
     product: str = Field(..., description="Product type: 'standard_report' or 'pe_reviewed'")
@@ -354,63 +345,423 @@ async def upload_file(file: UploadFile = File(...)):
 
 
 # ============================================================================
-# PDF REPORT GENERATION
+# PDF REPORT GENERATION (FLEXIBLE - matches frontend)
 # ============================================================================
 
 @app.post("/generate-report")
-async def generate_report(request: ReportRequest):
+async def generate_report(request: FrontendReportRequest):
     """
-    Generate a PDF report
+    Generate a PDF report from frontend data.
     
-    First report per user is FREE, subsequent reports require payment
+    Accepts the exact data structure the frontend sends.
+    First report per user is FREE, subsequent reports require payment.
     """
-    user_identifier = request.customer_email or "anonymous"
+    user_identifier = request.email or "anonymous"
     
     # Check if user has already used free report
     has_used_free = free_report_users.get(user_identifier, False)
     
     # Collect any uploaded attachments
     attachments = []
-    if request.attachment_ids:
-        for file_id in request.attachment_ids:
-            if file_id in uploaded_files:
-                attachments.append(uploaded_files[file_id])
+    if request.pid_file_id and request.pid_file_id in uploaded_files:
+        attachments.append(uploaded_files[request.pid_file_id])
+    if request.misc_file_id and request.misc_file_id in uploaded_files:
+        attachments.append(uploaded_files[request.misc_file_id])
     
     try:
-        # Generate the PDF
-        pdf_bytes = generate_psv_report(
-            device_info=request.device_info.model_dump(),
-            scenario_info=request.scenario_info.model_dump(),
-            fluid_info=request.fluid_info,
-            calculation_results=request.calculation_results,
+        # Generate the PDF using the frontend's data structure
+        pdf_bytes = generate_psv_report_from_frontend(
+            device_info=request.device_info,
+            report_info=request.report_info or {},
+            vessel_details=request.vessel_details or {},
+            scenario_selections=request.scenario_selections or {},
+            scenario_conditions=request.scenario_conditions or {},
+            compositions=request.compositions or {},
+            results=request.results or {},
             attachments=attachments if attachments else None,
-            customer_email=request.customer_email,
+            customer_email=request.email,
         )
         
         # Mark that user has used their free report
-        if not has_used_free and request.customer_email:
+        if not has_used_free and request.email:
             free_report_users[user_identifier] = True
         
+        # Get device tag for filename
+        device_tag = request.device_info.get("tag", "PSV") if request.device_info else "PSV"
+        
         # Send email if provided
-        if request.customer_email:
-            send_report_email(
-                to_email=request.customer_email,
-                pdf_bytes=pdf_bytes,
-                device_tag=request.device_info.tag,
-                report_type="standard",
-            )
+        if request.email:
+            try:
+                send_report_email(
+                    to_email=request.email,
+                    pdf_bytes=pdf_bytes,
+                    device_tag=device_tag,
+                    report_type="standard",
+                )
+            except Exception as email_error:
+                print(f"Warning: Could not send email: {email_error}")
         
         # Return PDF as download
         return StreamingResponse(
             io.BytesIO(pdf_bytes),
             media_type="application/pdf",
             headers={
-                "Content-Disposition": f"attachment; filename=PSV_Report_{request.device_info.tag}.pdf"
+                "Content-Disposition": f"attachment; filename=PSV_Report_{device_tag}.pdf"
             }
         )
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
+
+
+def generate_psv_report_from_frontend(
+    device_info: Dict[str, Any],
+    report_info: Dict[str, Any],
+    vessel_details: Dict[str, Any],
+    scenario_selections: Dict[str, Any],
+    scenario_conditions: Dict[str, Any],
+    compositions: Dict[str, Any],
+    results: Dict[str, Any],
+    attachments: Optional[List[bytes]] = None,
+    customer_email: Optional[str] = None,
+) -> bytes:
+    """
+    Generate PDF report from the frontend's data structure.
+    
+    This function transforms the frontend data and calls the PDF generator.
+    """
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+    from pypdf import PdfReader, PdfWriter
+    
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=0.75*inch,
+        leftMargin=0.75*inch,
+        topMargin=1*inch,
+        bottomMargin=0.75*inch
+    )
+    
+    styles = getSampleStyleSheet()
+    
+    # Custom styles
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        spaceAfter=20,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor('#1e3a5f')
+    )
+    
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading2'],
+        fontSize=12,
+        spaceBefore=15,
+        spaceAfter=8,
+        textColor=colors.HexColor('#1e3a5f')
+    )
+    
+    normal_style = ParagraphStyle(
+        'CustomNormal',
+        parent=styles['Normal'],
+        fontSize=10,
+        spaceAfter=6
+    )
+    
+    story = []
+    
+    # ========== TITLE PAGE ==========
+    story.append(Spacer(1, 1*inch))
+    
+    device_tag = device_info.get('tag', 'PSV')
+    revision = report_info.get('revision', 'A') if report_info else 'A'
+    
+    story.append(Paragraph(f"<b>{device_tag} Deliverable Rev. {revision}</b>", title_style))
+    story.append(Spacer(1, 0.5*inch))
+    
+    # Device info table
+    device_data = []
+    if device_info.get('facility_name'):
+        device_data.append(['Facility:', device_info.get('facility_name', '')])
+    if device_info.get('pid_number'):
+        device_data.append(['P&ID Number:', device_info.get('pid_number', '')])
+    if device_info.get('protected_system'):
+        device_data.append(['Protected System:', device_info.get('protected_system', '')])
+    if device_info.get('set_pressure'):
+        device_data.append(['Set Pressure:', f"{device_info.get('set_pressure', '')} psig"])
+    if device_info.get('selected_orifice'):
+        device_data.append(['Selected Orifice:', device_info.get('selected_orifice', '')])
+    
+    if device_data:
+        device_table = Table(device_data, colWidths=[2*inch, 4*inch])
+        device_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        story.append(device_table)
+    
+    story.append(Spacer(1, 0.5*inch))
+    
+    # Revision history
+    story.append(Paragraph("<b>Revision History</b>", heading_style))
+    
+    revision_history = report_info.get('revision_history', []) if report_info else []
+    if not revision_history:
+        revision_history = [{'rev': 'A', 'date': '', 'description': 'Issued for Review'}]
+    
+    rev_data = [['Rev', 'Date', 'Description']]
+    for rev in revision_history:
+        rev_data.append([
+            rev.get('rev', ''),
+            rev.get('date', ''),
+            rev.get('description', '')
+        ])
+    
+    rev_table = Table(rev_data, colWidths=[0.75*inch, 1.25*inch, 4*inch])
+    rev_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e8f4f8')),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(rev_table)
+    
+    story.append(PageBreak())
+    
+    # ========== RELIEF DEVICE SIZING SUMMARY ==========
+    story.append(Paragraph("<b>Relief Device Sizing Summary</b>", title_style))
+    story.append(Spacer(1, 0.25*inch))
+    
+    # Device details section
+    story.append(Paragraph("<b>Relief Device & Protected System Details</b>", heading_style))
+    
+    details_data = [
+        ['Relief Device Tag:', device_info.get('tag', '-'), 'P&ID Number:', device_info.get('pid_number', '-')],
+        ['PSV Type:', device_info.get('psv_type', 'CONVENTIONAL').upper(), 'Discharge Location:', device_info.get('discharge_location', 'ATMOSPHERE').upper()],
+        ['Set Pressure:', f"{device_info.get('set_pressure', '-')} psig", 'Selected Orifice:', device_info.get('selected_orifice', '-')],
+    ]
+    
+    details_table = Table(details_data, colWidths=[1.5*inch, 1.75*inch, 1.5*inch, 1.75*inch])
+    details_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f8f8f8')),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(details_table)
+    story.append(Spacer(1, 0.25*inch))
+    
+    # ========== SCENARIO RESULTS TABLE ==========
+    if results and results.get('scenarioResults'):
+        story.append(Paragraph("<b>Summary of Potential Relieving Scenarios</b>", heading_style))
+        
+        scenario_results = results.get('scenarioResults', {})
+        controlling = results.get('controllingScenario', '')
+        
+        # Table header
+        table_data = [['Credible?', 'Scenario', 'Required Flow\n(lb/hr)', 'Rated Flow\n(lb/hr)', 'Required Area\n(in²)', 'Status']]
+        
+        scenario_names = {
+            'fire_wetted': '1A - Fire-Wetted',
+            'fire_unwetted': '1B - Fire-Unwetted',
+            'blocked_vapor': '2A - Blocked Outlet',
+            'cv_failure': '3 - CV Failure',
+            'hydraulic_thermal': '4 - Hydraulic Thermal',
+        }
+        
+        for scen_id, scen_name in scenario_names.items():
+            sel = scenario_selections.get(scen_id, {}) if scenario_selections else {}
+            sr = scenario_results.get(scen_id, {})
+            
+            is_applicable = sel.get('applicable', False) if isinstance(sel, dict) else False
+            credible = 'YES' if is_applicable and sr.get('applicable') else 'NO'
+            
+            if sr.get('applicable'):
+                req_flow = f"{sr.get('requiredFlow', 0):,.0f}" if sr.get('requiredFlow') else '-'
+                rated_flow = f"{sr.get('ratedFlow', 0):,.0f}" if sr.get('ratedFlow') else '-'
+                req_area = f"{sr.get('requiredArea', 0):.3f}" if sr.get('requiredArea') else '-'
+                status = 'Adequate' if sr.get('adequate') else 'UNDERSIZED'
+            else:
+                req_flow = '-'
+                rated_flow = '-'
+                req_area = '-'
+                status = '-'
+            
+            table_data.append([credible, scen_name, req_flow, rated_flow, req_area, status])
+        
+        scenario_table = Table(table_data, colWidths=[0.75*inch, 1.5*inch, 1*inch, 1*inch, 1*inch, 1*inch])
+        scenario_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#d0e8f0')),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+            ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ]))
+        
+        # Highlight controlling scenario row
+        for i, scen_id in enumerate(scenario_names.keys(), start=1):
+            if scen_id == controlling:
+                scenario_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, i), (-1, i), colors.HexColor('#fff3cd')),
+                ]))
+            # Color status cell
+            sr = scenario_results.get(scen_id, {})
+            if sr.get('applicable'):
+                if sr.get('adequate'):
+                    scenario_table.setStyle(TableStyle([
+                        ('TEXTCOLOR', (5, i), (5, i), colors.HexColor('#28a745')),
+                    ]))
+                else:
+                    scenario_table.setStyle(TableStyle([
+                        ('TEXTCOLOR', (5, i), (5, i), colors.HexColor('#dc3545')),
+                        ('FONTNAME', (5, i), (5, i), 'Helvetica-Bold'),
+                    ]))
+        
+        story.append(scenario_table)
+        story.append(Spacer(1, 0.25*inch))
+        
+        # Controlling scenario summary
+        if controlling and scenario_results.get(controlling):
+            sr = scenario_results[controlling]
+            story.append(Paragraph("<b>Design Scenario Summary</b>", heading_style))
+            
+            summary_data = [
+                ['Controlling Scenario:', scenario_names.get(controlling, controlling)],
+                ['Required Orifice Area:', f"{results.get('maxRequiredArea', 0):.3f} in²"],
+                ['System Status:', 'ADEQUATE' if not results.get('isUndersized') else 'UNDERSIZED - RECOMMEND LARGER ORIFICE'],
+            ]
+            
+            summary_table = Table(summary_data, colWidths=[2*inch, 4*inch])
+            summary_table.setStyle(TableStyle([
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ]))
+            story.append(summary_table)
+    
+    story.append(PageBreak())
+    
+    # ========== VESSEL DETAILS ==========
+    if vessel_details:
+        story.append(Paragraph("<b>Vessel Details</b>", heading_style))
+        
+        vessel_data = []
+        if vessel_details.get('equipment_tag'):
+            vessel_data.append(['Equipment Tag:', vessel_details.get('equipment_tag', '-')])
+        vessel_data.append(['Orientation:', vessel_details.get('orientation', 'horizontal').title()])
+        vessel_data.append(['Head Type:', vessel_details.get('head_type', '2:1_elliptical').replace('_', ' ').title()])
+        vessel_data.append(['Inner Diameter:', f"{vessel_details.get('inner_diameter', '-')} in"])
+        vessel_data.append(['Seam-to-Seam Length:', f"{vessel_details.get('seam_to_seam', '-')} ft"])
+        vessel_data.append(['Height Above Grade:', f"{vessel_details.get('height_above_grade', '-')} ft"])
+        
+        if vessel_data:
+            vessel_table = Table(vessel_data, colWidths=[2*inch, 3*inch])
+            vessel_table.setStyle(TableStyle([
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ]))
+            story.append(vessel_table)
+            story.append(Spacer(1, 0.25*inch))
+    
+    # ========== FLUID COMPOSITIONS ==========
+    if compositions:
+        story.append(Paragraph("<b>Fluid Compositions</b>", heading_style))
+        
+        for scen_id, comp in compositions.items():
+            if comp and any(v > 0 for v in comp.values()):
+                scen_name = scenario_names.get(scen_id, scen_id)
+                story.append(Paragraph(f"<i>{scen_name}</i>", normal_style))
+                
+                comp_data = [['Component', 'Mol %']]
+                for comp_name, mol_pct in comp.items():
+                    if mol_pct > 0:
+                        comp_data.append([comp_name.title(), f"{mol_pct:.2f}"])
+                
+                if len(comp_data) > 1:
+                    comp_table = Table(comp_data, colWidths=[2*inch, 1*inch])
+                    comp_table.setStyle(TableStyle([
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                        ('FONTSIZE', (0, 0), (-1, -1), 9),
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e8f4f8')),
+                        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                    ]))
+                    story.append(comp_table)
+                    story.append(Spacer(1, 0.15*inch))
+    
+    # ========== FOOTER ON EACH PAGE ==========
+    def add_footer(canvas, doc):
+        canvas.saveState()
+        canvas.setFont('Helvetica', 8)
+        canvas.setFillColor(colors.grey)
+        canvas.drawString(0.75*inch, 0.5*inch, f"{device_tag} | Rev. {revision}")
+        canvas.drawCentredString(letter[0]/2, 0.5*inch, f"Page {doc.page}")
+        canvas.drawRightString(letter[0] - 0.75*inch, 0.5*inch, "Franc Engineering")
+        canvas.restoreState()
+    
+    # Build main PDF
+    doc.build(story, onFirstPage=add_footer, onLaterPages=add_footer)
+    
+    # Get the main report PDF bytes
+    buffer.seek(0)
+    main_pdf_bytes = buffer.getvalue()
+    
+    # Merge with attachments if any
+    if attachments:
+        writer = PdfWriter()
+        
+        # Add main report pages
+        main_reader = PdfReader(io.BytesIO(main_pdf_bytes))
+        for page in main_reader.pages:
+            writer.add_page(page)
+        
+        # Add attachment pages
+        for attachment in attachments:
+            try:
+                attachment_reader = PdfReader(io.BytesIO(attachment))
+                for page in attachment_reader.pages:
+                    writer.add_page(page)
+            except Exception as e:
+                print(f"Warning: Could not add attachment: {e}")
+                continue
+        
+        # Write merged PDF
+        output = io.BytesIO()
+        writer.write(output)
+        output.seek(0)
+        return output.getvalue()
+    
+    return main_pdf_bytes
 
 
 @app.get("/check-free-report")
