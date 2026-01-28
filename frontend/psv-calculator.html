@@ -2938,6 +2938,95 @@ doc.save(filename);
 
                     // Step 1: Generate the PDF locally as a blob
                     const pdfBlob = generateReport(true);
+                    
+                    if (!pdfBlob) {
+                        throw new Error('Failed to generate PDF locally');
+                    }
+
+                    if (btn) btn.textContent = 'Uploading attachments...';
+
+                    // Step 2: Upload P&ID file if present
+                    let pidFileId = null;
+                    if (pidFile) {
+                        const formData = new FormData();
+                        formData.append('file', pidFile);
+                        const uploadResponse = await fetch(`${API_BASE}/upload-file`, {
+                            method: 'POST',
+                            body: formData
+                        });
+                        if (!uploadResponse.ok) {
+                            throw new Error('Failed to upload P&ID file');
+                        }
+                        const uploadData = await uploadResponse.json();
+                        pidFileId = uploadData.file_id;
+                        console.log('P&ID uploaded:', pidFileId);
+                    }
+
+                    // Step 3: Upload misc file if present
+                    let miscFileId = null;
+                    if (miscFile) {
+                        const formData = new FormData();
+                        formData.append('file', miscFile);
+                        const uploadResponse = await fetch(`${API_BASE}/upload-file`, {
+                            method: 'POST',
+                            body: formData
+                        });
+                        if (!uploadResponse.ok) {
+                            throw new Error('Failed to upload misc file');
+                        }
+                        const uploadData = await uploadResponse.json();
+                        miscFileId = uploadData.file_id;
+                        console.log('Misc file uploaded:', miscFileId);
+                    }
+
+                    if (btn) btn.textContent = 'Merging PDFs...';
+
+                    // Step 4: Send to backend for merging
+                    const mergeFormData = new FormData();
+                    mergeFormData.append('main_pdf', pdfBlob, 'report.pdf');
+                    if (pidFileId) mergeFormData.append('pid_file_id', pidFileId);
+                    if (miscFileId) mergeFormData.append('misc_file_id', miscFileId);
+                    mergeFormData.append('device_tag', deviceInfo.tag || 'PSV');
+                    mergeFormData.append('email', userEmail);
+
+                    const mergeResponse = await fetch(`${API_BASE}/merge-pdfs`, {
+                        method: 'POST',
+                        body: mergeFormData
+                    });
+
+                    if (!mergeResponse.ok) {
+                        const errorText = await mergeResponse.text();
+                        throw new Error(`Merge failed: ${errorText}`);
+                    }
+
+                    // Step 5: Download the merged PDF
+                    const mergedPdfBlob = await mergeResponse.blob();
+                    const url = window.URL.createObjectURL(mergedPdfBlob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${deviceInfo.tag || 'PSV'}_Deliverable_Rev${reportInfo.revision || 'A'}_${new Date().toISOString().split('T')[0]}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+
+                    // Track that user has used their free report
+                    trackReportGeneration();
+                    alert('Report generated successfully!');
+
+                } catch (error) {
+                    console.error('Report generation error:', error);
+                    alert(`Error generating report: ${error.message}\n\nFalling back to local generation...`);
+                    // Fallback to local generation (without attachments)
+                    generateReport();
+                } finally {
+                    const btn = document.querySelector('[data-generate-btn]');
+                    if (btn) {
+                        btn.textContent = 'Generate FREE Report';
+                        btn.disabled = false;
+                    }
+                }
+            };
             // Check if all applicable scenarios have valid compositions (>=99%)
             const allCompositionsValid = calculableScenarios.every(s => getTotalMol(s.id) >= 99);
 
