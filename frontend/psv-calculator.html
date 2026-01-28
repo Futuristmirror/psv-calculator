@@ -3173,7 +3173,43 @@ doc.save(filename);
     </span>
 ))}
                     </div>
-
+{/* Example Report Preview - Show on Step 1 */}
+                    {step === 1 && (
+                        <div className={`mb-8 rounded-xl shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                            <div className="flex flex-col lg:flex-row gap-6">
+                                <div className="lg:w-1/3">
+                                    <h2 className={`text-xl font-bold mb-3 ${darkMode ? 'text-blue-400' : 'franc-blue'}`}>
+                                        📄 See What You'll Get
+                                    </h2>
+                                    <p className={`mb-4 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                        Professional PSV sizing reports with comprehensive calculations, scenario analysis, and complete documentation.
+                                    </p>
+                                    <ul className={`text-sm space-y-2 mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                        <li>✓ Complete API 520/521 calculations</li>
+                                        <li>✓ Multiple scenario analysis</li>
+                                        <li>✓ Fluid composition details</li>
+                                        <li>✓ P&ID and attachment integration</li>
+                                    </ul>
+                                    <a 
+                                        href={`${API_BASE}/static/example-report.pdf`}
+                                        download="PSV_Example_Report.pdf"
+                                        className="inline-block px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition"
+                                    >
+                                        ⬇️ Download Example
+                                    </a>
+                                </div>
+                                <div className="lg:w-2/3">
+                                    <div className={`rounded-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                        <iframe
+                                            src={`${API_BASE}/static/example-report.pdf`}
+                                            className="w-full h-96 lg:h-[500px]"
+                                            title="Example PSV Report"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                     {/* Step 1: Device Info */}
                     {step === 1 && (
                         <div className="fade-in bg-white rounded-xl shadow-lg p-6">
