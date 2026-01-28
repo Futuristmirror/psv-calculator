@@ -3112,6 +3112,19 @@ doc.save(filename);
                             >
                                 {darkMode ? '☀️' : '🌙'}
                             </button>
+                            {/* Clear All Button */}
+                            <button
+                                onClick={() => {
+                                    if (window.confirm('Are you sure you want to clear all data? This cannot be undone.')) {
+                                        localStorage.removeItem('psv_calculator_state');
+                                        window.location.reload();
+                                    }
+                                }}
+                                className={`p-2 rounded-lg transition ${darkMode ? 'bg-gray-700 text-red-400 hover:bg-gray-600' : 'bg-gray-100 text-red-600 hover:bg-gray-200'}`}
+                                title="Clear All Data"
+                            >
+                                🗑️
+                            </button>
                             {/* Device Info - Upper Right */}
                             {step > 1 && (deviceInfo.tag || deviceInfo.pid_number || deviceInfo.facility_name) && (
                             <div className={`text-right text-sm rounded-lg p-3 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
@@ -3151,8 +3164,14 @@ doc.save(filename);
                     {/* Step Labels */}
                     <div className="flex justify-between mb-8 text-xs sm:text-sm text-gray-500 px-2">
                         {STEP_LABELS.map((label, idx) => (
-                            <span key={label} className={step === idx + 1 ? 'font-semibold franc-accent' : ''}>{label}</span>
-                        ))}
+    <span 
+        key={label} 
+        className={`cursor-pointer hover:text-blue-500 transition ${step === idx + 1 ? 'font-semibold franc-accent' : ''}`}
+        onClick={() => (idx + 1) < step && setStep(idx + 1)}
+    >
+        {label}
+    </span>
+))}
                     </div>
 
                     {/* Step 1: Device Info */}
@@ -5838,7 +5857,7 @@ Because the two cases above do not apply, a detailed analysis has not been perfo
 
                     {/* Footer */}
                     <div className="mt-8 text-center text-sm text-gray-500">
-                        <p>Calculations per API 520/521. For screening purposes only.</p>
+                        <p>Calculations per API 520/521. Preliminary estimates only — professional engineering verification required.</p>
                         <p className="mt-1">© 2024 Franc Engineering | <a href="https://franceng.com" className="hover:underline">franceng.com</a></p>
                     </div>
                 </div>
