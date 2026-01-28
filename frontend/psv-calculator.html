@@ -55,6 +55,41 @@
         .dark-mode .shadow-lg { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.2) !important; }
         .dark-mode .rounded-xl { background-color: #1f2937; }
         body.dark { background-color: #111827 !important; }
+        /* Additional Dark Mode Fixes - Colored Sections */
+        .dark-mode .bg-amber-50 { background-color: #374151 !important; }
+        .dark-mode .border-amber-200 { border-color: #d97706 !important; }
+        .dark-mode .text-amber-800 { color: #fbbf24 !important; }
+        .dark-mode .bg-amber-100 { background-color: #4b5563 !important; }
+
+        .dark-mode .bg-green-50 { background-color: #1f2937 !important; }
+        .dark-mode .border-green-200 { border-color: #22c55e !important; }
+        .dark-mode .border-green-300 { border-color: #22c55e !important; }
+        .dark-mode .text-green-800 { color: #86efac !important; }
+        .dark-mode .bg-green-100 { background-color: #374151 !important; }
+
+        .dark-mode .bg-blue-50 { background-color: #1e3a5f !important; }
+        .dark-mode .border-blue-200 { border-color: #3b82f6 !important; }
+        .dark-mode .text-blue-700 { color: #93c5fd !important; }
+        .dark-mode .bg-blue-100 { background-color: #1e3a5f !important; }
+
+        .dark-mode .bg-purple-50 { background-color: #2d1f47 !important; }
+        .dark-mode .border-purple-200 { border-color: #a855f7 !important; }
+        .dark-mode .text-purple-800 { color: #c4b5fd !important; }
+        .dark-mode .text-purple-700 { color: #c4b5fd !important; }
+        .dark-mode .bg-purple-100 { background-color: #3b2d5c !important; }
+
+        .dark-mode .bg-orange-50 { background-color: #3d2814 !important; }
+        .dark-mode .text-orange-700 { color: #fdba74 !important; }
+
+        .dark-mode .bg-red-50 { background-color: #3d1418 !important; }
+        .dark-mode .text-red-700 { color: #fca5a5 !important; }
+
+        .dark-mode .border-gray-100 { border-color: #374151 !important; }
+        .dark-mode .text-gray-400 { color: #9ca3af !important; }
+        /* Dark mode for highlighted/controlling scenario row */
+        .dark-mode .bg-yellow-50 { background-color: #3d3514 !important; }
+        .dark-mode tr.bg-yellow-50 { background-color: #3d3514 !important; }
+        .dark-mode tr.bg-yellow-50 td { background-color: #3d3514 !important; color: #fef08a !important; }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen" id="app-body">
@@ -64,7 +99,7 @@
         const { useState, useEffect } = React;
 
         // API Configuration - Update this for production
-        const API_BASE = ''; // Empty for local calculations, or 'https://your-api.railway.app'
+        const API_BASE = 'https://psv-calculator-production.up.railway.app';
 
         // Component Database
         // Component Database
@@ -365,7 +400,7 @@
         // Main App Component
         function PSVCalculator() {
             const [step, setStep] = useState(1);
-            const [darkMode, setDarkMode] = useState(true);
+            const [darkMode, setDarkMode] = useState(false);
 
             // Step 1: Device Info
             const [deviceInfo, setDeviceInfo] = useState({
@@ -2838,7 +2873,129 @@
                     alert('Error generating PDF: ' + error.message);
                 }
             };
+// Generate Report using Backend API (with proper PDF attachments)
+            const generateReportWithBackend = async () => {
+                if (!results) {
+                    alert('No results to generate report. Please complete calculations first.');
+                    return;
+                }
 
+                // Check for email (one free report per email)
+                let userEmail = localStorage.getItem('psv_user_email');
+                if (!userEmail) {
+                    userEmail = prompt('Enter your email to generate your free report:');
+                    if (!userEmail || !userEmail.includes('@')) {
+                        alert('Valid email required to generate report.');
+                        return;
+                    }
+                    localStorage.setItem('psv_user_email', userEmail);
+                }
+
+                try {
+                    // Check if user has already used free report
+                    const checkResponse = await fetch(`${API_BASE}/check-free-report?email=${encodeURIComponent(userEmail)}`);
+                    const checkData = await checkResponse.json();
+                    
+                    if (!checkData.can_generate_free) {
+                        const proceed = confirm('You have already used your free report. Would you like to purchase another report for $99?');
+                        if (proceed) {
+                            initiateCheckout('standard_report');
+                        }
+                        return;
+                    }
+
+                    // Show loading state
+                    const btn = document.querySelector('[data-generate-btn]');
+                    const originalText = btn ? btn.textContent : '';
+                    if (btn) {
+                        btn.textContent = 'Generating...';
+                        btn.disabled = true;
+                    }
+
+                    // Upload P&ID file if present
+                    let pidFileId = null;
+                    if (pidFile) {
+                        const formData = new FormData();
+                        formData.append('file', pidFile);
+                        formData.append('file_type', 'pid');
+                        const uploadResponse = await fetch(`${API_BASE}/upload-file`, {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const uploadData = await uploadResponse.json();
+                        pidFileId = uploadData.file_id;
+                    }
+
+                    // Upload misc file if present
+                    let miscFileId = null;
+                    if (miscFile) {
+                        const formData = new FormData();
+                        formData.append('file', miscFile);
+                        formData.append('file_type', 'misc');
+                        const uploadResponse = await fetch(`${API_BASE}/upload-file`, {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const uploadData = await uploadResponse.json();
+                        miscFileId = uploadData.file_id;
+                    }
+
+                    // Prepare report data
+                    const reportData = {
+                        email: userEmail,
+                        device_info: deviceInfo,
+                        report_info: reportInfo,
+                        vessel_details: vesselDetails,
+                        scenario_selections: scenarioSelections,
+                        scenario_conditions: scenarioConditions,
+                        compositions: compositions,
+                        results: results,
+                        pid_file_id: pidFileId,
+                        misc_file_id: miscFileId
+                    };
+
+                    // Generate report
+                    const response = await fetch(`${API_BASE}/generate-report`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(reportData)
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.detail || 'Failed to generate report');
+                    }
+
+                    // Download the PDF
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${deviceInfo.tag || 'PSV'}_Report_${new Date().toISOString().split('T')[0]}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+
+                    // Track that user has used their free report
+                    trackReportGeneration();
+
+                    alert('Report generated successfully!');
+
+                } catch (error) {
+                    console.error('Report generation error:', error);
+                    alert('Error generating report: ' + error.message + '\n\nFalling back to local generation...');
+                    // Fallback to local generation
+                    generateReport();
+                } finally {
+                    // Reset button state
+                    const btn = document.querySelector('[data-generate-btn]');
+                    if (btn) {
+                        btn.textContent = 'Generate FREE Report';
+                        btn.disabled = false;
+                    }
+                }
+            };
             // Check if all applicable scenarios have valid compositions (>=99%)
             const allCompositionsValid = calculableScenarios.every(s => getTotalMol(s.id) >= 99);
 
@@ -5507,9 +5664,9 @@ Because the two cases above do not apply, a detailed analysis has not been perfo
                                         </ul>
                                         {/* Smart button: Free first report, then require payment */}
                                         {paymentStatus.reportsGenerated === 0 || paymentStatus.hasPaid || !paymentStatus.stripeConfigured ? (
-                                            <button
+                                            <button data-generate-btn
                                                 onClick={() => {
-                                                    generateReport();
+                                                    generateReportWithBackend();
                                                     trackReportGeneration();
                                                     if (paymentStatus.hasPaid) {
                                                         setPaymentStatus(prev => ({ ...prev, hasPaid: false, sessionId: null }));
@@ -5527,11 +5684,17 @@ Because the two cases above do not apply, a detailed analysis has not been perfo
                                             </button>
                                         )}
                                     </div>
-
+{/* TEMPORARY TEST BUTTON - REMOVE BEFORE PRODUCTION */}
+                        <button
+                            onClick={() => generateReportWithBackend()}
+                            className="w-full py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition mt-2"
+                        >
+                            🧪 TEST: Generate Report (No Payment)
+                        </button>
                                     <div className="bg-white/10 rounded-lg p-4 ring-2 ring-yellow-400">
                                         <p className="font-semibold text-lg">PE-Reviewed Report</p>
-                                        <p className="text-sm text-yellow-300 mb-2">Engineer Stamped</p>
-                                        <p className="text-3xl font-bold my-2">$499</p>
+                                        <p className="text-sm text-yellow-300 mb-2">Engineer Certified</p>
+                                        <p className="text-3xl font-bold my-2">$299</p>
                                         <ul className="text-sm text-blue-100 space-y-1 mb-4">
                                             <li>✓ Everything in Standard</li>
                                             <li>✓ PE (TX/CO) Review</li>
@@ -5550,7 +5713,7 @@ Because the two cases above do not apply, a detailed analysis has not been perfo
                                            }}
                                            disabled={isProcessingPayment}
                                            className="w-full py-2 bg-yellow-400 text-blue-900 rounded-lg font-medium hover:bg-yellow-300 transition disabled:opacity-50">
-                                            {isProcessingPayment ? 'Processing...' : (paymentStatus.stripeConfigured ? 'Pay $499' : 'Request Quote')}
+                                            {isProcessingPayment ? 'Processing...' : (paymentStatus.stripeConfigured ? 'Pay $299' : 'Request Quote')}
                                         </button>
                                     </div>
 
