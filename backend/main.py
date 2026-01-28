@@ -107,7 +107,7 @@ PRODUCTS = {
     "pe_reviewed": {
         "name": "PSV Calculator - PE-Reviewed Report", 
         "description": "Engineer certified report with PE (TX/CO) review, 48-72hr delivery",
-        "price_cents": 49900,  # $299.00
+        "price_cents": 29900,  # $299.00
     }
 }
 
