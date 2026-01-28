@@ -3181,8 +3181,14 @@ doc.save(filename);
                     {/* Step Labels */}
                     <div className="flex justify-between mb-8 text-xs sm:text-sm text-gray-500 px-2">
                         {STEP_LABELS.map((label, idx) => (
-                            <span key={label} className={step === idx + 1 ? 'font-semibold franc-accent' : ''}>{label}</span>
-                        ))}
+    <span 
+        key={label} 
+        className={`cursor-pointer hover:text-blue-500 transition ${step === idx + 1 ? 'font-semibold franc-accent' : ''}`}
+        onClick={() => (idx + 1) < step && setStep(idx + 1)}
+    >
+        {label}
+    </span>
+))}
                     </div>
 
                     {/* Step 1: Device Info */}
