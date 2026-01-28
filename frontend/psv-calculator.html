@@ -5664,9 +5664,9 @@ Because the two cases above do not apply, a detailed analysis has not been perfo
                                         </ul>
                                         {/* Smart button: Free first report, then require payment */}
                                         {paymentStatus.reportsGenerated === 0 || paymentStatus.hasPaid || !paymentStatus.stripeConfigured ? (
-                                            <button
+                                            <button data-generate-btn
                                                 onClick={() => {
-                                                    generateReport();
+                                                    generateReportWithBackend();
                                                     trackReportGeneration();
                                                     if (paymentStatus.hasPaid) {
                                                         setPaymentStatus(prev => ({ ...prev, hasPaid: false, sessionId: null }));
