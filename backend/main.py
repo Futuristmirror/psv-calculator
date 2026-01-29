@@ -111,7 +111,11 @@ PRODUCTS = {
         "price_cents": 29900,  # $299.00
     }
 }
-
+# Stripe Price IDs from dashboard
+STRIPE_PRICE_IDS = {
+    "standard_report": "price_1SuvxTQ8P2LM1oJWfGmSJqAT",
+    "pe_reviewed": "price_1SuvzhQ8P2LM1oJWA44yaK1W",
+}
 
 # ============================================================================
 # SERVE FRONTEND
@@ -454,16 +458,8 @@ async def create_checkout_session(request: CreateCheckoutRequest):
         cancel_url = request.cancel_url or f"{FRONTEND_URL}?payment=cancelled"
         
         checkout_params = {
-            "payment_method_types": ["card"],
-            "line_items": [{
-                "price_data": {
-                    "currency": "usd",
-                    "product_data": {
-                        "name": product["name"],
-                        "description": product["description"],
-                    },
-                    "unit_amount": product["price_cents"],
-                },
+                "line_items": [{
+                "price": STRIPE_PRICE_IDS[request.product],
                 "quantity": 1,
             }],
             "mode": "payment",
