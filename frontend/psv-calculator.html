@@ -3200,10 +3200,11 @@ doc.save(filename);
                                 </div>
                             </div>
                             <iframe
-                                src={`${API_BASE}/static/example-report.pdf`}
-                                className="w-full h-[700px] rounded-lg border"
-                                title="Example PSV Report"
-                            />
+    key="example-pdf-viewer"
+    src={`${API_BASE}/static/example-report.pdf`}
+    className="w-full h-[700px] rounded-lg border"
+    title="Example PSV Report"
+/>
                         </div>
                     )}
                     {/* Step 1: Device Info */}
