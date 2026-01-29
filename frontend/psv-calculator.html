@@ -1371,7 +1371,7 @@ useEffect(() => {
     }
 }, []);
 
-          // Verify payment and generate report with auto-download
+          // Verify payment and auto-generate report
             const verifyPayment = async (sessionId) => {
                 if (!API_BASE) return;
                 try {
@@ -1384,8 +1384,13 @@ useEffect(() => {
                             sessionId: sessionId,
                         }));
                         
-                        // Auto-generate and download report
-                        await generatePaidReport(sessionId);
+                        alert('Payment successful! Generating your report...');
+                        
+                        // Call the existing generateReport function
+                        generateReport();
+                        
+                        // Clear saved state after successful generation
+                        clearSavedState();
                     }
                 } catch (error) {
                     console.error('Error verifying payment:', error);
