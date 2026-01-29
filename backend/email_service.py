@@ -32,18 +32,6 @@ def send_report_email(
 ) -> bool:
     """
     Send a PSV report via email
-    
-    Args:
-        to_email: Recipient email address
-        pdf_bytes: PDF report as bytes
-        device_tag: PSV tag for the filename
-        report_type: 'standard', 'pe_reviewed', or display name like 'Professional Report'
-        customer_name: Optional customer name for personalization
-        is_admin_copy: If True, this is an admin notification copy
-        customer_email: Customer's email (used in admin copy)
-        
-    Returns:
-        True if email sent successfully, False otherwise
     """
     
     if not SMTP_USER or not SMTP_PASSWORD:
@@ -51,12 +39,10 @@ def send_report_email(
         return False
     
     try:
-        # Create message
         msg = MIMEMultipart()
         msg['From'] = f"{FROM_NAME} <{FROM_EMAIL}>"
         msg['To'] = to_email
         
-        # Different subject/body for admin copy vs customer
         if is_admin_copy:
             msg['Subject'] = f"[SALE] {report_type} - {device_tag}"
             body = f"""
@@ -98,9 +84,6 @@ Best regards,
 Franc Engineering
 https://franceng.com
 info@franceng.com
-
----
-This report is provided for professional use. Please review all inputs and verify results are appropriate for your specific application.
 """
             else:
                 body = f"""
@@ -121,48 +104,15 @@ Best regards,
 Franc Engineering
 https://franceng.com
 info@franceng.com
-
----
-This report is for screening purposes. Final PSV sizing should be verified by a qualified engineer.
 """
 
         msg.attach(MIMEText(body, 'plain'))
         
-        # Attach PDF
         filename = f"{device_tag}_Deliverable_{datetime.now().strftime('%Y%m%d')}.pdf"
         pdf_attachment = MIMEApplication(pdf_bytes, _subtype='pdf')
         pdf_attachment.add_header('Content-Disposition', 'attachment', filename=filename)
         msg.attach(pdf_attachment)
         
-        # Send email
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_USER, SMTP_PASSWORD)
-            server.send_message(msg)
-        
-        print(f"Report email sent successfully to {to_email}")
-        return True
-        
-    except Exception as e:
-        print(f"Error sending email: {e}")
-        return False
-
-Questions? Contact us at info@franceng.com
-
-Best regards,
-Franc Engineering
-https://franceng.com
-"""
-
-        msg.attach(MIMEText(body, 'plain'))
-        
-        # Attach PDF
-        filename = f"PSV_Report_{device_tag}_{datetime.now().strftime('%Y%m%d')}.pdf"
-        pdf_attachment = MIMEApplication(pdf_bytes, _subtype='pdf')
-        pdf_attachment.add_header('Content-Disposition', 'attachment', filename=filename)
-        msg.attach(pdf_attachment)
-        
-        # Send email
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
             server.starttls()
             server.login(SMTP_USER, SMTP_PASSWORD)
@@ -185,16 +135,6 @@ def send_pe_review_notification(
 ) -> bool:
     """
     Send notification to Franc Engineering about a PE review request
-    
-    Args:
-        customer_email: Customer's email address
-        device_tag: PSV device tag
-        customer_name: Customer's name
-        customer_notes: Any notes from the customer
-        report_data: The full report data for review
-        
-    Returns:
-        True if notification sent successfully
     """
     
     if not SMTP_USER or not SMTP_PASSWORD:
@@ -204,7 +144,7 @@ def send_pe_review_notification(
     try:
         msg = MIMEMultipart()
         msg['From'] = f"{FROM_NAME} <{FROM_EMAIL}>"
-        msg['To'] = "info@franceng.com"  # Your notification email
+        msg['To'] = "caseym@franceng.com"
         msg['Subject'] = f"🔔 New PE Review Request - {device_tag}"
         
         body = f"""
@@ -233,7 +173,6 @@ This is an automated notification from the PSV Calculator system.
         
         msg.attach(MIMEText(body, 'plain'))
         
-        # Send notification
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
             server.starttls()
             server.login(SMTP_USER, SMTP_PASSWORD)
