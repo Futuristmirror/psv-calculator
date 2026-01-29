@@ -1271,98 +1271,105 @@
                 stripeConfigured: false,
             });
             const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+            const [isRestored, setIsRestored] = useState(false);
 // ============================================
-            // AUTO-SAVE & RESTORE STATE (1 hour expiry)
-            // ============================================
-            const STORAGE_KEY = 'psv_calculator_state';
-            const EXPIRY_MS = 60 * 60 * 1000; // 1 hour
+// AUTO-SAVE & RESTORE STATE (1 hour expiry)
+// ============================================
+const STORAGE_KEY = 'psv_calculator_state';
+const EXPIRY_MS = 60 * 60 * 1000; // 1 hour
 
-            // Save all form state to localStorage
-            const saveStateToStorage = () => {
-                const state = {
-                    deviceInfo,
-                    reportInfo,
-                    scenarioSelections,
-                    scenarioConditions,
-                    vesselDetails,
-                    compositions,
-                    results,
-                    step,
-                    timestamp: Date.now()
-                };
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-            };
+// Save all form state to localStorage
+const saveStateToStorage = () => {
+    const state = {
+        deviceInfo,
+        reportInfo,
+        scenarioSelections,
+        scenarioConditions,
+        vesselDetails,
+        compositions,
+        results,
+        step,
+        timestamp: Date.now()
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+};
 
-            // Auto-save whenever any state changes
-            useEffect(() => {
-                // Don't save if we're on step 1 with no data entered
-                if (step === 1 && !deviceInfo.tag && !deviceInfo.facility_name) return;
-                saveStateToStorage();
-            }, [deviceInfo, reportInfo, scenarioSelections, scenarioConditions, vesselDetails, compositions, results, step]);
-
-            // Restore state on initial load
-            useEffect(() => {
-                try {
-                    const saved = localStorage.getItem(STORAGE_KEY);
-                    if (saved) {
-                        const parsed = JSON.parse(saved);
-                        // Check if data is less than 1 hour old
-                        if (parsed.timestamp && (Date.now() - parsed.timestamp) < EXPIRY_MS) {
-                            if (parsed.deviceInfo) setDeviceInfo(parsed.deviceInfo);
-                            if (parsed.reportInfo) setReportInfo(parsed.reportInfo);
-                            if (parsed.scenarioSelections) setScenarioSelections(parsed.scenarioSelections);
-                            if (parsed.scenarioConditions) setScenarioConditions(parsed.scenarioConditions);
-                            if (parsed.vesselDetails) setVesselDetails(parsed.vesselDetails);
-                            if (parsed.compositions) setCompositions(parsed.compositions);
-                            if (parsed.results) setResults(parsed.results);
-                            if (parsed.step) setStep(parsed.step);
-                            console.log('Restored saved state from', new Date(parsed.timestamp).toLocaleTimeString());
-                        } else {
-                            // Data expired, clear it
-                            localStorage.removeItem(STORAGE_KEY);
-                            console.log('Saved state expired, cleared');
-                        }
-                    }
-                } catch (e) {
-                    console.error('Error restoring state:', e);
-                }
-            }, []); // Only run once on mount
-
-            // Clear saved state after successful payment/report generation
-            const clearSavedState = () => {
+// Restore state on initial load - MUST RUN FIRST
+useEffect(() => {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            // Check if data is less than 1 hour old
+            if (parsed.timestamp && (Date.now() - parsed.timestamp) < EXPIRY_MS) {
+                if (parsed.deviceInfo) setDeviceInfo(parsed.deviceInfo);
+                if (parsed.reportInfo) setReportInfo(parsed.reportInfo);
+                if (parsed.scenarioSelections) setScenarioSelections(parsed.scenarioSelections);
+                if (parsed.scenarioConditions) setScenarioConditions(parsed.scenarioConditions);
+                if (parsed.vesselDetails) setVesselDetails(parsed.vesselDetails);
+                if (parsed.compositions) setCompositions(parsed.compositions);
+                if (parsed.results) setResults(parsed.results);
+                if (parsed.step) setStep(parsed.step);
+                console.log('Restored saved state from', new Date(parsed.timestamp).toLocaleTimeString());
+            } else {
+                // Data expired, clear it
                 localStorage.removeItem(STORAGE_KEY);
-                console.log('Cleared saved state');
-            };
-            // Check for payment success on page load
-            useEffect(() => {
-                const urlParams = new URLSearchParams(window.location.search);
-                const payment = urlParams.get('payment');
-                const sessionId = urlParams.get('session_id');
+                console.log('Saved state expired, cleared');
+            }
+        }
+    } catch (e) {
+        console.error('Error restoring state:', e);
+    }
+    // Mark restore as complete AFTER setting all state
+    setIsRestored(true);
+}, []); // Only run once on mount
 
-                // Load reports count from localStorage
-                const savedReportsCount = parseInt(localStorage.getItem('psv_reports_generated') || '0');
-                setPaymentStatus(prev => ({ ...prev, reportsGenerated: savedReportsCount }));
+// Auto-save whenever any state changes - BUT ONLY AFTER RESTORE IS COMPLETE
+useEffect(() => {
+    // Don't save until initial restore is complete
+    if (!isRestored) return;
+    // Don't save if we're on step 0 or step 1 with no data entered
+    if (step === 0) return;
+    if (step === 1 && !deviceInfo.tag && !deviceInfo.facility_name) return;
+    saveStateToStorage();
+}, [deviceInfo, reportInfo, scenarioSelections, scenarioConditions, vesselDetails, compositions, results, step, isRestored]);
 
-                // Check if Stripe is configured
-                if (API_BASE) {
-                    fetch(`${API_BASE}/payment-status`)
-                        .then(res => res.json())
-                        .then(data => {
-                            setPaymentStatus(prev => ({ ...prev, stripeConfigured: data.stripe_configured }));
-                        })
-                        .catch(() => {});
-                }
+// Clear saved state after successful payment/report generation
+const clearSavedState = () => {
+    localStorage.removeItem(STORAGE_KEY);
+    console.log('Cleared saved state');
+};
 
-                if (payment === 'success' && sessionId) {
-                    // Verify payment with backend
-                    verifyPayment(sessionId);
-                    // Clean up URL
-                    window.history.replaceState({}, '', window.location.pathname);
-                } else if (payment === 'cancelled') {
-                    alert('Payment was cancelled. You can try again when ready.');
-                    window.history.replaceState({}, '', window.location.pathname);
-                }
-            }, []);
+// Check for payment success on page load
+useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const payment = urlParams.get('payment');
+    const sessionId = urlParams.get('session_id');
+
+    // Load reports count from localStorage
+    const savedReportsCount = parseInt(localStorage.getItem('psv_reports_generated') || '0');
+    setPaymentStatus(prev => ({ ...prev, reportsGenerated: savedReportsCount }));
+
+    // Check if Stripe is configured
+    if (API_BASE) {
+        fetch(`${API_BASE}/payment-status`)
+            .then(res => res.json())
+            .then(data => {
+                setPaymentStatus(prev => ({ ...prev, stripeConfigured: data.stripe_configured }));
+            })
+            .catch(() => {});
+    }
+
+    if (payment === 'success' && sessionId) {
+        // Verify payment with backend
+        verifyPayment(sessionId);
+        // Clean up URL
+        window.history.replaceState({}, '', window.location.pathname);
+    } else if (payment === 'cancelled') {
+        alert('Payment was cancelled. You can try again when ready.');
+        window.history.replaceState({}, '', window.location.pathname);
+    }
+}, []);
 
             // Verify payment with backend
             const verifyPayment = async (sessionId) => {
