@@ -1371,7 +1371,7 @@ useEffect(() => {
     }
 }, []);
 
-            // Verify payment with backend
+          // Verify payment and generate report with auto-download
             const verifyPayment = async (sessionId) => {
                 if (!API_BASE) return;
                 try {
@@ -1383,10 +1383,93 @@ useEffect(() => {
                             hasPaid: true,
                             sessionId: sessionId,
                         }));
-                        alert('Payment successful! You can now generate your report.');
+                        
+                        // Auto-generate and download report
+                        await generatePaidReport(sessionId);
                     }
                 } catch (error) {
                     console.error('Error verifying payment:', error);
+                }
+            };
+
+            // Generate report after successful payment - emails + auto-download
+            const generatePaidReport = async (sessionId) => {
+                try {
+                    // Generate the PDF locally first (returns blob)
+                    const pdfBlob = generateReport(true);
+                    
+                    if (!pdfBlob) {
+                        console.error('Failed to generate PDF locally');
+                        alert('Payment successful! But there was an issue generating your report. Please contact support.');
+                        return;
+                    }
+
+                    // Upload attachments if present
+                    let pidFileId = null;
+                    let miscFileId = null;
+                    
+                    if (pidFile) {
+                        const formData = new FormData();
+                        formData.append('file', pidFile);
+                        const uploadResponse = await fetch(`${API_BASE}/upload-file`, {
+                            method: 'POST',
+                            body: formData
+                        });
+                        if (uploadResponse.ok) {
+                            const uploadData = await uploadResponse.json();
+                            pidFileId = uploadData.file_id;
+                        }
+                    }
+                    
+                    if (miscFile) {
+                        const formData = new FormData();
+                        formData.append('file', miscFile);
+                        const uploadResponse = await fetch(`${API_BASE}/upload-file`, {
+                            method: 'POST',
+                            body: formData
+                        });
+                        if (uploadResponse.ok) {
+                            const uploadData = await uploadResponse.json();
+                            miscFileId = uploadData.file_id;
+                        }
+                    }
+
+                    // Call backend to merge PDFs, send emails, and get final PDF
+                    const formData = new FormData();
+                    formData.append('session_id', sessionId);
+                    formData.append('main_pdf', pdfBlob, 'report.pdf');
+                    formData.append('device_tag', deviceInfo.tag || 'PSV');
+                    if (pidFileId) formData.append('pid_file_id', pidFileId);
+                    if (miscFileId) formData.append('misc_file_id', miscFileId);
+
+                    const response = await fetch(`${API_BASE}/generate-paid-report`, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('Failed to generate report');
+                    }
+
+                    // Auto-download the PDF
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${deviceInfo.tag || 'PSV'}_Deliverable_${new Date().toISOString().split('T')[0]}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+
+                    alert('Payment successful! Your report has been downloaded and emailed to you.');
+                    
+                    // Clear saved state after successful generation
+                    clearSavedState();
+                    
+                } catch (error) {
+                    console.error('Error generating paid report:', error);
+                    alert('Payment successful! Your report is being processed. If it doesn\'t download, please contact support.');
                 }
             };
 
