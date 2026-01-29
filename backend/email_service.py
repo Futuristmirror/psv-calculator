@@ -113,10 +113,16 @@ info@franceng.com
         pdf_attachment.add_header('Content-Disposition', 'attachment', filename=filename)
         msg.attach(pdf_attachment)
         
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_USER, SMTP_PASSWORD)
-            server.send_message(msg)
+        # Use SSL for port 465 (Bluehost), TLS for port 587 (Gmail)
+        if SMTP_PORT == 465:
+            with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as server:
+                server.login(SMTP_USER, SMTP_PASSWORD)
+                server.send_message(msg)
+        else:
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+                server.starttls()
+                server.login(SMTP_USER, SMTP_PASSWORD)
+                server.send_message(msg)
         
         print(f"Report email sent successfully to {to_email}")
         return True
@@ -173,10 +179,16 @@ This is an automated notification from the PSV Calculator system.
         
         msg.attach(MIMEText(body, 'plain'))
         
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_USER, SMTP_PASSWORD)
-            server.send_message(msg)
+        # Use SSL for port 465 (Bluehost), TLS for port 587 (Gmail)
+        if SMTP_PORT == 465:
+            with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as server:
+                server.login(SMTP_USER, SMTP_PASSWORD)
+                server.send_message(msg)
+        else:
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+                server.starttls()
+                server.login(SMTP_USER, SMTP_PASSWORD)
+                server.send_message(msg)
         
         print(f"PE review notification sent for {device_tag}")
         return True
