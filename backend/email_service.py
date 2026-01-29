@@ -27,6 +27,8 @@ def send_report_email(
     device_tag: str,
     report_type: str = "standard",
     customer_name: Optional[str] = None,
+    is_admin_copy: bool = False,
+    customer_email: Optional[str] = None,
 ) -> bool:
     """
     Send a PSV report via email
@@ -35,8 +37,10 @@ def send_report_email(
         to_email: Recipient email address
         pdf_bytes: PDF report as bytes
         device_tag: PSV tag for the filename
-        report_type: 'standard' or 'pe_reviewed'
+        report_type: 'standard', 'pe_reviewed', or display name like 'Professional Report'
         customer_name: Optional customer name for personalization
+        is_admin_copy: If True, this is an admin notification copy
+        customer_email: Customer's email (used in admin copy)
         
     Returns:
         True if email sent successfully, False otherwise
@@ -51,13 +55,32 @@ def send_report_email(
         msg = MIMEMultipart()
         msg['From'] = f"{FROM_NAME} <{FROM_EMAIL}>"
         msg['To'] = to_email
-        msg['Subject'] = f"PSV Sizing Report - {device_tag}"
         
-        # Email body
-        greeting = f"Dear {customer_name}," if customer_name else "Hello,"
-        
-        if report_type == "pe_reviewed":
+        # Different subject/body for admin copy vs customer
+        if is_admin_copy:
+            msg['Subject'] = f"[SALE] {report_type} - {device_tag}"
             body = f"""
+NEW REPORT SALE
+
+Report Details:
+- Device Tag: {device_tag}
+- Report Type: {report_type}
+- Customer Email: {customer_email or 'Not provided'}
+- Date: {datetime.now().strftime('%B %d, %Y %I:%M %p')}
+
+The customer's report is attached.
+
+---
+Automated notification from PSV Calculator
+"""
+        else:
+            msg['Subject'] = f"Your PSV Sizing Report - {device_tag}"
+            greeting = f"Dear {customer_name}," if customer_name else "Hello,"
+            
+            is_pe_reviewed = "pe" in report_type.lower() or "reviewed" in report_type.lower()
+            
+            if is_pe_reviewed:
+                body = f"""
 {greeting}
 
 Thank you for purchasing a PE-Reviewed PSV Sizing Report from Franc Engineering.
@@ -79,22 +102,50 @@ info@franceng.com
 ---
 This report is provided for professional use. Please review all inputs and verify results are appropriate for your specific application.
 """
-        else:
-            body = f"""
+            else:
+                body = f"""
 {greeting}
 
-Thank you for using the Franc Engineering PSV Sizing Calculator!
+Thank you for purchasing a PSV Sizing Report from Franc Engineering!
 
-Your PSV Sizing Report for {device_tag} is attached to this email.
+Your report for {device_tag} is attached to this email.
 
 Report Details:
 - Device Tag: {device_tag}
-- Report Type: Standard Report
+- Report Type: Professional Report
 - Date Generated: {datetime.now().strftime('%B %d, %Y')}
 
-IMPORTANT: This report is for screening purposes only. Final PSV sizing should be verified by a licensed professional engineer.
+If you have any questions or need a PE-stamped report, please contact us.
 
-Need a PE-stamped report? Visit https://franceng.com/psv-sizing-calculator to upgrade to our PE-Reviewed Report service.
+Best regards,
+Franc Engineering
+https://franceng.com
+info@franceng.com
+
+---
+This report is for screening purposes. Final PSV sizing should be verified by a qualified engineer.
+"""
+
+        msg.attach(MIMEText(body, 'plain'))
+        
+        # Attach PDF
+        filename = f"{device_tag}_Deliverable_{datetime.now().strftime('%Y%m%d')}.pdf"
+        pdf_attachment = MIMEApplication(pdf_bytes, _subtype='pdf')
+        pdf_attachment.add_header('Content-Disposition', 'attachment', filename=filename)
+        msg.attach(pdf_attachment)
+        
+        # Send email
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.send_message(msg)
+        
+        print(f"Report email sent successfully to {to_email}")
+        return True
+        
+    except Exception as e:
+        print(f"Error sending email: {e}")
+        return False
 
 Questions? Contact us at info@franceng.com
 
