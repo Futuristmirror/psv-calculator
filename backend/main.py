@@ -395,17 +395,32 @@ async def merge_pdfs_endpoint(
         if not has_used_free and email:
             free_report_users[user_identifier] = True
         
-        # Send email if provided
+        # Send email to customer if provided
         if email:
             try:
                 send_report_email(
                     to_email=email,
                     pdf_bytes=merged_pdf,
                     device_tag=device_tag,
-                    report_type="standard",
+                    report_type="Professional Report",
                 )
+                print(f"Sent report to customer: {email}")
             except Exception as email_error:
-                print(f"Warning: Could not send email: {email_error}")
+                print(f"Warning: Could not send email to customer: {email_error}")
+        
+        # Always send admin copy
+        try:
+            send_report_email(
+                to_email="caseym@franceng.com",
+                pdf_bytes=merged_pdf,
+                device_tag=device_tag,
+                report_type="[SOLD] Professional Report",
+                is_admin_copy=True,
+                customer_email=email,
+            )
+            print(f"Sent admin copy to caseym@franceng.com")
+        except Exception as email_error:
+            print(f"Warning: Could not send admin copy: {email_error}")
         
         # Return merged PDF
         return StreamingResponse(
