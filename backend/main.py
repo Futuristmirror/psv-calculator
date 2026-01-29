@@ -586,7 +586,110 @@ async def verify_payment(session_id: str):
         }
     except stripe.error.StripeError as e:
         raise HTTPException(status_code=400, detail=str(e))
-
+@app.post("/generate-paid-report")
+async def generate_paid_report(
+    session_id: str = Form(...),
+    main_pdf: UploadFile = File(...),
+    pid_file_id: Optional[str] = Form(None),
+    misc_file_id: Optional[str] = Form(None),
+    device_tag: Optional[str] = Form("PSV"),
+):
+    """
+    Generate final PDF after successful payment.
+    - Merges attachments
+    - Emails copy to customer
+    - Emails copy to admin (caseym@franceng.com)
+    - Returns PDF for auto-download
+    """
+    from pypdf import PdfReader, PdfWriter
+    
+    # Verify payment first
+    if session_id not in payment_sessions:
+        try:
+            session = stripe.checkout.Session.retrieve(session_id)
+            if session.payment_status != "paid":
+                raise HTTPException(status_code=400, detail="Payment not completed")
+            customer_email = session.customer_email
+            product_type = session.metadata.get("product", "standard_report")
+        except stripe.error.StripeError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid session: {str(e)}")
+    else:
+        session_data = payment_sessions[session_id]
+        if session_data["status"] != "completed":
+            raise HTTPException(status_code=400, detail="Payment not completed")
+        customer_email = session_data.get("email")
+        product_type = session_data.get("product", "standard_report")
+    
+    try:
+        main_pdf_content = await main_pdf.read()
+        writer = PdfWriter()
+        
+        main_reader = PdfReader(io.BytesIO(main_pdf_content))
+        for page in main_reader.pages:
+            writer.add_page(page)
+        
+        if pid_file_id and pid_file_id in uploaded_files:
+            try:
+                pid_reader = PdfReader(io.BytesIO(uploaded_files[pid_file_id]))
+                for page in pid_reader.pages:
+                    writer.add_page(page)
+            except Exception as e:
+                print(f"Warning: Could not add P&ID attachment: {e}")
+        
+        if misc_file_id and misc_file_id in uploaded_files:
+            try:
+                misc_reader = PdfReader(io.BytesIO(uploaded_files[misc_file_id]))
+                for page in misc_reader.pages:
+                    writer.add_page(page)
+            except Exception as e:
+                print(f"Warning: Could not add misc attachment: {e}")
+        
+        output = io.BytesIO()
+        writer.write(output)
+        output.seek(0)
+        merged_pdf = output.getvalue()
+        
+        report_type = "PE-Reviewed Report" if product_type == "pe_reviewed" else "Professional Report"
+        
+        # Email to customer
+        if customer_email:
+            try:
+                send_report_email(
+                    to_email=customer_email,
+                    pdf_bytes=merged_pdf,
+                    device_tag=device_tag,
+                    report_type=report_type,
+                )
+                print(f"Sent report email to customer: {customer_email}")
+            except Exception as e:
+                print(f"Warning: Could not email customer: {e}")
+        
+        # Email copy to admin
+        try:
+            send_report_email(
+                to_email="caseym@franceng.com",
+                pdf_bytes=merged_pdf,
+                device_tag=device_tag,
+                report_type=f"[SOLD] {report_type}",
+                is_admin_copy=True,
+                customer_email=customer_email,
+            )
+            print(f"Sent admin copy to caseym@franceng.com")
+        except Exception as e:
+            print(f"Warning: Could not email admin: {e}")
+        
+        return StreamingResponse(
+            io.BytesIO(merged_pdf),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename={device_tag}_Deliverable.pdf"
+            }
+        )
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
 
 @app.get("/payment-status")
 async def payment_status():
