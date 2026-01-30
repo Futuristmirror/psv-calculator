@@ -585,7 +585,8 @@ async def verify_payment(session_id: str):
     
     try:
         session = stripe.checkout.Session.retrieve(session_id)
-        is_paid = session.payment_status == "paid"
+print(f"Session status: {session.status}, payment_status: {session.payment_status}")
+is_paid = session.payment_status == "paid"
         
         payment_sessions[session_id] = {
             "status": "completed" if is_paid else session.status,
