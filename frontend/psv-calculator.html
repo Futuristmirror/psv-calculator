@@ -1361,12 +1361,13 @@ useEffect(() => {
     }
 
     if (payment === 'success' && sessionId) {
-        // Wait a moment for state to restore, then verify payment
-        setTimeout(() => {
-            verifyPayment(sessionId);
-        }, 500);
-        // Clean up URL
-        window.history.replaceState({}, '', window.location.pathname);
+    console.log('Payment success detected! Session:', sessionId);
+    alert('Payment detected! Starting report generation...');
+    // Clean up URL first
+    window.history.replaceState({}, '', window.location.pathname);
+    // Verify and generate
+    verifyPayment(sessionId);
+}
     } else if (payment === 'cancelled') {
         alert('Payment was cancelled. You can try again when ready.');
         window.history.replaceState({}, '', window.location.pathname);
