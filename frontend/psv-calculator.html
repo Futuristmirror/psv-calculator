@@ -1389,7 +1389,7 @@ useEffect(() => {
                         alert('Payment successful! Generating your report...');
                         
                         // Call the existing generateReport function
-                        generateReport();
+                        generatePaidReport(sessionId);
                         
                         // Clear saved state after successful generation
                         clearSavedState();
