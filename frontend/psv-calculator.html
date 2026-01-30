@@ -1367,8 +1367,7 @@ useEffect(() => {
     window.history.replaceState({}, '', window.location.pathname);
     // Verify and generate
     verifyPayment(sessionId);
-}
-    } else if (payment === 'cancelled') {
+} else if (payment === 'cancelled') {
         alert('Payment was cancelled. You can try again when ready.');
         window.history.replaceState({}, '', window.location.pathname);
     }
