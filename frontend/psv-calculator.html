@@ -1374,30 +1374,41 @@ useEffect(() => {
 }, []);
 
           // Verify payment and auto-generate report
-            const verifyPayment = async (sessionId) => {
-                if (!API_BASE) return;
-                try {
-                    const response = await fetch(`${API_BASE}/verify-payment/${sessionId}`);
-                    const data = await response.json();
-                    if (data.valid) {
-                        setPaymentStatus(prev => ({
-                            ...prev,
-                            hasPaid: true,
-                            sessionId: sessionId,
-                        }));
-                        
-                        alert('Payment successful! Generating your report...');
-                        
-                        // Call the existing generateReport function
-                        generatePaidReport(sessionId);
-                        
-                        // Clear saved state after successful generation
-                        clearSavedState();
-                    }
-                } catch (error) {
-                    console.error('Error verifying payment:', error);
-                }
-            };
+           const verifyPayment = async (sessionId) => {
+    if (!API_BASE) return;
+    
+    // Retry up to 5 times with 2 second delays
+    for (let attempt = 1; attempt <= 5; attempt++) {
+        try {
+            console.log(`Verify attempt ${attempt}...`);
+            const response = await fetch(`${API_BASE}/verify-payment/${sessionId}`);
+            const data = await response.json();
+            console.log('Verify response:', data);
+            
+            if (data.valid) {
+                setPaymentStatus(prev => ({
+                    ...prev,
+                    hasPaid: true,
+                    sessionId: sessionId,
+                }));
+                
+                alert('Payment successful! Generating your report...');
+                generatePaidReport(sessionId);
+                clearSavedState();
+                return;
+            }
+            
+            if (attempt < 5) {
+                console.log('Payment not confirmed yet, retrying in 2 seconds...');
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+        } catch (error) {
+            console.error('Error verifying payment:', error);
+        }
+    }
+    
+    alert('Payment verification is taking longer than expected. Please refresh the page or contact support.');
+};
 
             
 
