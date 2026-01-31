@@ -8,9 +8,14 @@ Author: Franc Engineering
 
 import os
 import stripe
-from fastapi import FastAPI, HTTPException, Request, Header
+import resend
+import base64
+import io
+import tempfile
+import uuid
+from fastapi import FastAPI, HTTPException, Request, Header, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 import uvicorn
@@ -20,14 +25,33 @@ import time
 from thermo_engine import get_properties, COMPONENTS, PRESETS
 from psv_sizing import calculate_psv_size, wetted_area_horizontal_vessel, wetted_area_vertical_vessel
 
+# Try to import PyPDF2 for PDF merging
+try:
+    from PyPDF2 import PdfMerger, PdfReader
+    PDF_MERGE_AVAILABLE = True
+except ImportError:
+    PDF_MERGE_AVAILABLE = False
+
 # Stripe Configuration
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
+# Resend Email Configuration
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+ADMIN_EMAIL = "caseym@franceng.com"
+FROM_EMAIL = os.getenv("FROM_EMAIL", "reports@franceng.com")
+
+if RESEND_API_KEY:
+    resend.api_key = RESEND_API_KEY
+
 # In-memory store for payment sessions (use Redis/DB in production)
 # Maps session_id -> { status, email, created_at, product }
 payment_sessions: Dict[str, Dict] = {}
+
+# In-memory store for uploaded files (use cloud storage in production)
+# Maps file_id -> { filename, content_base64, file_type, created_at }
+uploaded_files: Dict[str, Dict] = {}
 
 app = FastAPI(
     title="Franc Engineering PSV Calculator API",
@@ -289,8 +313,8 @@ PRODUCTS = {
     },
     "pe_reviewed": {
         "name": "PSV Calculator - PE-Reviewed Report",
-        "description": "Engineer stamped report with PE (TX/CO) review, 48-72hr delivery",
-        "price_cents": 49900,  # $499.00
+        "description": "Full PDF calculation package with all inputs documented. Additionally, engineer certified report with PE (TX/CO) review in 48-72hr.",
+        "price_cents": 29900,  # $299.00
     }
 }
 
@@ -408,6 +432,7 @@ async def verify_payment(session_id: str):
             "valid": session_data["status"] == "completed",
             "status": session_data["status"],
             "product": session_data.get("product"),
+            "email": session_data.get("email") or session_data.get("customer_email"),
         }
 
     # If not in cache, check with Stripe directly
@@ -430,6 +455,7 @@ async def verify_payment(session_id: str):
             "valid": is_paid,
             "status": session.payment_status,
             "product": session.metadata.get("product"),
+            "email": session.customer_email,
         }
     except stripe.error.StripeError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -444,10 +470,237 @@ async def payment_status():
     }
 
 
+# ============ Report Generation & Email Endpoints ============
+
+class GenerateReportRequest(BaseModel):
+    email: str = Field(..., description="Customer email for report delivery")
+    session_id: Optional[str] = Field(None, description="Stripe session ID for paid reports")
+    report_pdf_base64: str = Field(..., description="Base64 encoded PDF report")
+    device_tag: Optional[str] = Field("PSV", description="Device tag for filename")
+    pid_file_id: Optional[str] = Field(None, description="ID of uploaded P&ID file")
+    misc_file_id: Optional[str] = Field(None, description="ID of uploaded Misc file")
+
+
+@app.post("/upload-file")
+async def upload_file(
+    file: UploadFile = File(...),
+    file_type: str = Form(...)
+):
+    """Upload a file (P&ID or Misc) for report attachment"""
+    try:
+        content = await file.read()
+        file_id = str(uuid.uuid4())
+
+        uploaded_files[file_id] = {
+            "filename": file.filename,
+            "content": content,
+            "content_type": file.content_type,
+            "file_type": file_type,
+            "created_at": time.time()
+        }
+
+        # Clean up old files (older than 1 hour)
+        current_time = time.time()
+        old_files = [fid for fid, fdata in uploaded_files.items()
+                     if current_time - fdata["created_at"] > 3600]
+        for fid in old_files:
+            del uploaded_files[fid]
+
+        return {"file_id": file_id, "filename": file.filename}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/check-free-report")
+async def check_free_report(email: str):
+    """Check if an email can still generate a free report"""
+    # For now, always allow - tracking is done client-side via localStorage
+    # In production, you'd check a database
+    return {"can_generate_free": True, "email": email}
+
+
+def merge_pdfs(main_pdf_bytes: bytes, pid_file_id: Optional[str], misc_file_id: Optional[str]) -> bytes:
+    """Merge the main PDF with P&ID and Misc PDFs if available"""
+    if not PDF_MERGE_AVAILABLE:
+        return main_pdf_bytes
+
+    merger = PdfMerger()
+
+    # Add main report
+    merger.append(io.BytesIO(main_pdf_bytes))
+
+    # Add P&ID if it's a PDF
+    if pid_file_id and pid_file_id in uploaded_files:
+        pid_data = uploaded_files[pid_file_id]
+        if pid_data.get("content_type") == "application/pdf":
+            try:
+                merger.append(io.BytesIO(pid_data["content"]))
+            except Exception as e:
+                print(f"Could not merge P&ID PDF: {e}")
+
+    # Add Misc file if it's a PDF
+    if misc_file_id and misc_file_id in uploaded_files:
+        misc_data = uploaded_files[misc_file_id]
+        if misc_data.get("content_type") == "application/pdf":
+            try:
+                merger.append(io.BytesIO(misc_data["content"]))
+            except Exception as e:
+                print(f"Could not merge Misc PDF: {e}")
+
+    # Write merged PDF to bytes
+    output = io.BytesIO()
+    merger.write(output)
+    merger.close()
+    output.seek(0)
+
+    return output.read()
+
+
+def send_report_email(customer_email: str, report_bytes: bytes, device_tag: str,
+                      pid_file_id: Optional[str] = None, misc_file_id: Optional[str] = None):
+    """Send the report via email to customer and admin"""
+    if not RESEND_API_KEY:
+        print("Resend API key not configured, skipping email")
+        return False
+
+    filename = f"{device_tag}_PSV_Report_{time.strftime('%Y-%m-%d')}.pdf"
+
+    # Build attachments list
+    attachments = [
+        {
+            "filename": filename,
+            "content": base64.b64encode(report_bytes).decode('utf-8'),
+            "content_type": "application/pdf"
+        }
+    ]
+
+    # Add P&ID attachment if it's not a PDF (PDFs are merged into main report)
+    if pid_file_id and pid_file_id in uploaded_files:
+        pid_data = uploaded_files[pid_file_id]
+        if pid_data.get("content_type") != "application/pdf":
+            attachments.append({
+                "filename": f"PID_{pid_data['filename']}",
+                "content": base64.b64encode(pid_data["content"]).decode('utf-8'),
+                "content_type": pid_data.get("content_type", "application/octet-stream")
+            })
+
+    # Add Misc attachment if it's not a PDF (PDFs are merged into main report)
+    if misc_file_id and misc_file_id in uploaded_files:
+        misc_data = uploaded_files[misc_file_id]
+        if misc_data.get("content_type") != "application/pdf":
+            attachments.append({
+                "filename": f"Misc_{misc_data['filename']}",
+                "content": base64.b64encode(misc_data["content"]).decode('utf-8'),
+                "content_type": misc_data.get("content_type", "application/octet-stream")
+            })
+
+    # Send to both customer and admin
+    recipients = [customer_email]
+    if ADMIN_EMAIL and ADMIN_EMAIL != customer_email:
+        recipients.append(ADMIN_EMAIL)
+
+    try:
+        params = {
+            "from": f"Franc Engineering <{FROM_EMAIL}>",
+            "to": recipients,
+            "subject": f"PSV Sizing Report - {device_tag}",
+            "html": f"""
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                    <div style="background-color: #1e40af; padding: 20px; text-align: center;">
+                        <h1 style="color: white; margin: 0;">Franc Engineering</h1>
+                    </div>
+                    <div style="padding: 30px; background-color: #f8f9fa;">
+                        <h2 style="color: #1e40af;">Your PSV Sizing Report</h2>
+                        <p>Thank you for using the Franc Engineering PSV Calculator!</p>
+                        <p>Your PSV sizing report for <strong>{device_tag}</strong> is attached to this email.</p>
+                        <div style="background-color: #e8f4f8; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                            <p style="margin: 0;"><strong>Report Details:</strong></p>
+                            <ul style="margin: 10px 0;">
+                                <li>Device Tag: {device_tag}</li>
+                                <li>Generated: {time.strftime('%Y-%m-%d %H:%M UTC')}</li>
+                            </ul>
+                        </div>
+                        <p>If you have any questions about your report or need engineering services, please contact us.</p>
+                        <p style="margin-top: 30px;">
+                            Best regards,<br>
+                            <strong>Franc Engineering Team</strong>
+                        </p>
+                    </div>
+                    <div style="background-color: #1e40af; padding: 15px; text-align: center;">
+                        <p style="color: white; margin: 0; font-size: 12px;">
+                            <a href="https://franceng.com" style="color: #93c5fd;">franceng.com</a> |
+                            <a href="mailto:caseym@franceng.com" style="color: #93c5fd;">caseym@franceng.com</a>
+                        </p>
+                    </div>
+                </div>
+            """,
+            "attachments": attachments
+        }
+
+        response = resend.Emails.send(params)
+        print(f"Email sent successfully: {response}")
+        return True
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+        return False
+
+
+@app.post("/generate-report")
+async def generate_report(request: GenerateReportRequest):
+    """Generate merged PDF report and send via email"""
+    try:
+        # Decode the base64 PDF
+        try:
+            main_pdf_bytes = base64.b64decode(request.report_pdf_base64)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid PDF data: {str(e)}")
+
+        # Merge PDFs if there are attachments
+        merged_pdf = merge_pdfs(
+            main_pdf_bytes,
+            request.pid_file_id,
+            request.misc_file_id
+        )
+
+        # Send email
+        email_sent = send_report_email(
+            customer_email=request.email,
+            report_bytes=merged_pdf,
+            device_tag=request.device_tag or "PSV",
+            pid_file_id=request.pid_file_id,
+            misc_file_id=request.misc_file_id
+        )
+
+        # Clean up uploaded files
+        for file_id in [request.pid_file_id, request.misc_file_id]:
+            if file_id and file_id in uploaded_files:
+                del uploaded_files[file_id]
+
+        # Return the merged PDF
+        filename = f"{request.device_tag or 'PSV'}_PSV_Report_{time.strftime('%Y-%m-%d')}.pdf"
+        return Response(
+            content=merged_pdf,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "X-Email-Sent": str(email_sent).lower()
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy"}
+    return {
+        "status": "healthy",
+        "email_configured": bool(RESEND_API_KEY),
+        "pdf_merge_available": PDF_MERGE_AVAILABLE
+    }
 
 
 if __name__ == "__main__":
