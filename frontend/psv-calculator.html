@@ -3194,7 +3194,32 @@ doc.save(filename);
 
             // Updated step order: Device -> Scenario -> Fluid -> Calcs -> Results
             const STEP_LABELS = ['Start', 'Device', 'Scenario', 'Fluid', 'Calcs', 'Results'];
-
+// Payment Success Page - show after successful Stripe checkout
+            if (paymentStatus.showSuccessPage) {
+                return (
+                    <div className={`max-w-2xl mx-auto p-6 ${darkMode ? 'dark-mode' : ''}`}>
+                        <div className="bg-white rounded-xl shadow-lg p-8 text-center">
+                            <div className="text-6xl mb-4">✅</div>
+                            <h1 className="text-2xl font-bold text-green-600 mb-2">Payment Successful!</h1>
+                            <p className="text-gray-600 mb-6">
+                                Your payment has been processed. Click below to generate and download your report.
+                            </p>
+                            <button
+                                onClick={() => {
+                                    generatePaidReport(paymentStatus.sessionId);
+                                    setPaymentStatus(prev => ({ ...prev, showSuccessPage: false }));
+                                }}
+                                className="px-8 py-3 bg-blue-600 text-white rounded-lg font-semibold text-lg hover:bg-blue-700 transition"
+                            >
+                                📄 Download Report
+                            </button>
+                            <p className="text-sm text-gray-500 mt-4">
+                                Your report will also be emailed to you.
+                            </p>
+                        </div>
+                    </div>
+                );
+            }
             return (
                 <div className={`max-w-4xl mx-auto p-4 sm:p-6 ${darkMode ? 'dark-mode' : ''}`}>
                     {/* Header */}
