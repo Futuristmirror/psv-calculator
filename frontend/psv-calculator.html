@@ -1299,13 +1299,24 @@
                 }
 
                 if (payment === 'success' && sessionId) {
-                    // Load saved state for the success page
+                    // Load saved state for the success page AND restore actual state
                     const savedStateJson = localStorage.getItem('psv_checkout_state');
                     if (savedStateJson) {
                         try {
                             const savedState = JSON.parse(savedStateJson);
                             if (savedState.timestamp && (Date.now() - savedState.timestamp) < 3600000) {
+                                // Store for success page reference
                                 setSuccessPageData(savedState);
+                                // ALSO restore actual state so generateReport can use it
+                                if (savedState.deviceInfo) setDeviceInfo(savedState.deviceInfo);
+                                if (savedState.reportInfo) setReportInfo(savedState.reportInfo);
+                                if (savedState.scenarioSelections) setScenarioSelections(savedState.scenarioSelections);
+                                if (savedState.compositions) setCompositions(savedState.compositions);
+                                if (savedState.vesselDetails) setVesselDetails(savedState.vesselDetails);
+                                if (savedState.scenarioConditions) setScenarioConditions(savedState.scenarioConditions);
+                                if (savedState.results) setResults(savedState.results);
+                                setStep(5); // Go to results page
+                                // Show success page
                                 setShowSuccessPage(true);
                             }
                         } catch (e) {
@@ -3115,101 +3126,22 @@
             const STEP_LABELS = ['Device', 'Scenario', 'Fluid', 'Calcs', 'Results'];
 
             // Generate report from saved data (for success page)
-            const generateReportFromSavedData = async () => {
-                if (!successPageData) {
-                    alert('No saved data found. Please try again.');
+            // State is already restored when success page loads, so just call generateReport
+            const generateReportFromSavedData = () => {
+                if (!results) {
+                    alert('No calculation results found. Please try again.');
                     return;
                 }
 
                 setIsGeneratingReport(true);
                 try {
-                    const { jsPDF } = window.jspdf;
-                    const doc = new jsPDF();
-                    const pageWidth = doc.internal.pageSize.getWidth();
-                    const pageHeight = doc.internal.pageSize.getHeight();
-                    const margin = 15;
+                    // Call the existing full generateReport function
+                    // State was already restored when success page loaded
+                    generateReport();
 
-                    const savedDeviceInfo = successPageData.deviceInfo || {};
-                    const savedReportInfo = successPageData.reportInfo || {};
-                    const savedResults = successPageData.results || {};
-
-                    // Cover Page
-                    doc.setFillColor(200, 220, 240);
-                    doc.rect(margin, margin, pageWidth - 2*margin, 20, 'F');
-                    doc.setDrawColor(0, 0, 0);
-                    doc.setLineWidth(0.5);
-                    doc.rect(margin, margin, pageWidth - 2*margin, 20);
-
-                    doc.setFont('helvetica', 'bold');
-                    doc.setFontSize(18);
-                    doc.setTextColor(0, 0, 0);
-                    doc.text(`${savedDeviceInfo.tag || 'PSV'} Deliverable Rev. ${savedReportInfo.revision || '0'}`, margin + 5, margin + 13);
-
-                    doc.setFontSize(10);
-                    doc.setFont('helvetica', 'normal');
-                    doc.setTextColor(100, 100, 100);
-                    doc.text('Franc Engineering | franceng.com', pageWidth / 2, pageHeight - 20, { align: 'center' });
-
-                    // Page 2 - Summary
-                    doc.addPage();
-                    doc.setFillColor(230, 230, 230);
-                    doc.rect(margin, margin, pageWidth - 2*margin, 18, 'F');
-                    doc.rect(margin, margin, pageWidth - 2*margin, 18);
-
-                    doc.setFont('helvetica', 'bold');
-                    doc.setFontSize(14);
-                    doc.setTextColor(0, 0, 0);
-                    doc.text('Relief Device Sizing Summary', margin + 3, margin + 12);
-
-                    let yPos = margin + 30;
-                    doc.setFontSize(10);
-                    doc.setFont('helvetica', 'normal');
-
-                    const details = [
-                        `Device Tag: ${savedDeviceInfo.tag || '-'}`,
-                        `P&ID Number: ${savedDeviceInfo.pid_number || '-'}`,
-                        `Set Pressure: ${savedDeviceInfo.set_pressure || '-'} psig`,
-                        `MAWP: ${savedDeviceInfo.mawp || '-'} psig`,
-                        `Protected System: ${savedDeviceInfo.protected_system || '-'}`,
-                    ];
-
-                    details.forEach(line => {
-                        doc.text(line, margin, yPos);
-                        yPos += 7;
-                    });
-
-                    if (savedResults.maxRequiredArea) {
-                        yPos += 10;
-                        doc.setFont('helvetica', 'bold');
-                        doc.text('Results:', margin, yPos);
-                        yPos += 7;
-                        doc.setFont('helvetica', 'normal');
-                        doc.text(`Required Area: ${savedResults.maxRequiredArea.toFixed(3)} in²`, margin, yPos);
-                        yPos += 7;
-                        doc.text(`Controlling Scenario: ${savedResults.controllingScenario || '-'}`, margin, yPos);
-                    }
-
-                    // Footer
-                    const pageCount = doc.internal.getNumberOfPages();
-                    for (let i = 1; i <= pageCount; i++) {
-                        doc.setPage(i);
-                        doc.setFontSize(7);
-                        doc.setTextColor(128, 128, 128);
-                        doc.setDrawColor(200, 200, 200);
-                        doc.line(margin, pageHeight - 12, pageWidth - margin, pageHeight - 12);
-                        doc.text(`${savedDeviceInfo.tag || 'PSV'} | Franc Engineering`, margin, pageHeight - 8);
-                        doc.text(`Page ${i} of ${pageCount}`, pageWidth - margin, pageHeight - 8, { align: 'right' });
-                    }
-
-                    // Download the PDF
-                    const filename = `${savedDeviceInfo.tag || 'PSV'}_Report_${new Date().toISOString().split('T')[0]}.pdf`;
-                    doc.save(filename);
-
-                    // Clean up
+                    // Clean up saved checkout state
                     localStorage.removeItem('psv_checkout_state');
                     localStorage.removeItem('psv_pending_report');
-
-                    alert('Report downloaded successfully!');
 
                 } catch (error) {
                     console.error('Error generating report:', error);
@@ -3217,6 +3149,24 @@
                 } finally {
                     setIsGeneratingReport(false);
                 }
+            };
+
+            // Return to calculator with restored data
+            const returnToCalculator = () => {
+                if (successPageData) {
+                    // Restore all state
+                    if (successPageData.deviceInfo) setDeviceInfo(successPageData.deviceInfo);
+                    if (successPageData.reportInfo) setReportInfo(successPageData.reportInfo);
+                    if (successPageData.scenarioSelections) setScenarioSelections(successPageData.scenarioSelections);
+                    if (successPageData.compositions) setCompositions(successPageData.compositions);
+                    if (successPageData.vesselDetails) setVesselDetails(successPageData.vesselDetails);
+                    if (successPageData.scenarioConditions) setScenarioConditions(successPageData.scenarioConditions);
+                    if (successPageData.results) setResults(successPageData.results);
+                    // Go to step 5 (results)
+                    setStep(5);
+                }
+                setShowSuccessPage(false);
+                // Don't remove the checkout state - they might want to download report later
             };
 
             // Show success page if payment was successful
@@ -3264,10 +3214,7 @@
                             </p>
 
                             <button
-                                onClick={() => {
-                                    setShowSuccessPage(false);
-                                    localStorage.removeItem('psv_checkout_state');
-                                }}
+                                onClick={returnToCalculator}
                                 className="mt-6 text-blue-600 hover:text-blue-800 text-sm underline"
                             >
                                 Return to Calculator
