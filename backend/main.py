@@ -18,7 +18,8 @@ import io
 import uuid
 from fastapi import FastAPI, HTTPException, Request, Header, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 import uvicorn
@@ -76,6 +77,30 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve static frontend files (frontend/ is copied to static/ in Docker)
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.get("/", response_class=HTMLResponse)
+async def serve_frontend():
+    """Serve the main frontend application"""
+    # Try static folder first (Docker), then frontend folder (local dev)
+    for path in [
+        os.path.join(STATIC_DIR, "psv-calculator.html"),
+        os.path.join(os.path.dirname(__file__), "..", "frontend", "psv-calculator.html"),
+    ]:
+        if os.path.exists(path):
+            return FileResponse(path, media_type="text/html")
+    return HTMLResponse("<h1>Frontend not found</h1>", status_code=404)
+
+
+@app.get("/frontend/psv-calculator.html", response_class=HTMLResponse)
+async def serve_frontend_legacy():
+    """Legacy route for frontend"""
+    return await serve_frontend()
 
 
 # Request/Response Models
