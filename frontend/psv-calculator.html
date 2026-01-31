@@ -399,7 +399,7 @@
 
         // Main App Component
         function PSVCalculator() {
-            const [step, setStep] = useState(0);
+            const [step, setStep] = useState(1);
             const [darkMode, setDarkMode] = useState(false);
 
             // Step 1: Device Info
@@ -1264,223 +1264,87 @@
             });
 
             // Payment state
-           const [paymentStatus, setPaymentStatus] = useState({
-    hasPaid: false,
-    sessionId: null,
-    reportsGenerated: 0, // Track free reports used
-    stripeConfigured: false,
-    showSuccessPage: false,
-});
+            const [paymentStatus, setPaymentStatus] = useState({
+                hasPaid: false,
+                sessionId: null,
+                reportsGenerated: 0, // Track free reports used
+                stripeConfigured: false,
+                customerEmail: null,
+                productPurchased: null,
+            });
             const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-            const [isRestored, setIsRestored] = useState(false);
-// ============================================
-// AUTO-SAVE & RESTORE STATE (1 hour expiry)
-// ============================================
-const STORAGE_KEY = 'psv_calculator_state';
-const EXPIRY_MS = 60 * 60 * 1000; // 1 hour
+            const [showPaymentSuccessModal, setShowPaymentSuccessModal] = useState(false);
+            const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
-// Save all form state to localStorage
-const saveStateToStorage = () => {
-    const state = {
-        deviceInfo,
-        reportInfo,
-        scenarioSelections,
-        scenarioConditions,
-        vesselDetails,
-        compositions,
-        results,
-        step,
-        timestamp: Date.now()
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-};
+            // Check for payment success on page load
+            useEffect(() => {
+                const urlParams = new URLSearchParams(window.location.search);
+                const payment = urlParams.get('payment');
+                const sessionId = urlParams.get('session_id');
 
-// Restore state on initial load - MUST RUN FIRST
-useEffect(() => {
-    try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-            const parsed = JSON.parse(saved);
-            // Check if data is less than 1 hour old
-            if (parsed.timestamp && (Date.now() - parsed.timestamp) < EXPIRY_MS) {
-                if (parsed.deviceInfo) setDeviceInfo(parsed.deviceInfo);
-                if (parsed.reportInfo) setReportInfo(parsed.reportInfo);
-                if (parsed.scenarioSelections) setScenarioSelections(parsed.scenarioSelections);
-                if (parsed.scenarioConditions) setScenarioConditions(parsed.scenarioConditions);
-                if (parsed.vesselDetails) setVesselDetails(parsed.vesselDetails);
-                if (parsed.compositions) setCompositions(parsed.compositions);
-                if (parsed.results) setResults(parsed.results);
-                if (parsed.step) setStep(parsed.step);
-                console.log('Restored saved state from', new Date(parsed.timestamp).toLocaleTimeString());
-            } else {
-                // Data expired, clear it
-                localStorage.removeItem(STORAGE_KEY);
-                console.log('Saved state expired, cleared');
-            }
-        }
-    } catch (e) {
-        console.error('Error restoring state:', e);
-    }
-    // Mark restore as complete AFTER setting all state
-    setIsRestored(true);
-}, []); // Only run once on mount
+                // Load reports count from localStorage
+                const savedReportsCount = parseInt(localStorage.getItem('psv_reports_generated') || '0');
+                setPaymentStatus(prev => ({ ...prev, reportsGenerated: savedReportsCount }));
 
-// Auto-save whenever any state changes - BUT ONLY AFTER RESTORE IS COMPLETE
-useEffect(() => {
-    // Don't save until initial restore is complete
-    if (!isRestored) return;
-    // Don't save if we're on step 0 or step 1 with no data entered
-    if (step === 0) return;
-    if (step === 1 && !deviceInfo.tag && !deviceInfo.facility_name) return;
-    saveStateToStorage();
-}, [deviceInfo, reportInfo, scenarioSelections, scenarioConditions, vesselDetails, compositions, results, step, isRestored]);
+                // Check if Stripe is configured
+                if (API_BASE) {
+                    fetch(`${API_BASE}/payment-status`)
+                        .then(res => res.json())
+                        .then(data => {
+                            setPaymentStatus(prev => ({ ...prev, stripeConfigured: data.stripe_configured }));
+                        })
+                        .catch(() => {});
+                }
 
-// Clear saved state after successful payment/report generation
-const clearSavedState = () => {
-    localStorage.removeItem(STORAGE_KEY);
-    console.log('Cleared saved state');
-};
+                if (payment === 'success' && sessionId) {
+                    // Verify payment with backend
+                    verifyPayment(sessionId);
+                    // Clean up URL
+                    window.history.replaceState({}, '', window.location.pathname);
+                } else if (payment === 'cancelled') {
+                    alert('Payment was cancelled. You can try again when ready.');
+                    window.history.replaceState({}, '', window.location.pathname);
+                }
+            }, []);
 
-// Check for payment success on page load
-useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const payment = urlParams.get('payment');
-    const sessionId = urlParams.get('session_id');
-
-    // Load reports count from localStorage
-    const savedReportsCount = parseInt(localStorage.getItem('psv_reports_generated') || '0');
-    setPaymentStatus(prev => ({ ...prev, reportsGenerated: savedReportsCount }));
-
-    // Check if Stripe is configured
-    if (API_BASE) {
-        fetch(`${API_BASE}/payment-status`)
-            .then(res => res.json())
-            .then(data => {
-                setPaymentStatus(prev => ({ ...prev, stripeConfigured: data.stripe_configured }));
-            })
-            .catch(() => {});
-    }
-
-   if (payment === 'success' && sessionId) {
-        // Store session ID and show success state - user will click button to download
-        setPaymentStatus(prev => ({
-            ...prev,
-            hasPaid: true,
-            sessionId: sessionId,
-            showSuccessPage: true,
-        }));
-        // Clean up URL
-        window.history.replaceState({}, '', window.location.pathname);
-    } else if (payment === 'cancelled') {
-        alert('Payment was cancelled. You can try again when ready.');
-        window.history.replaceState({}, '', window.location.pathname);
-    }
-}, []);
-
-          // Verify payment and auto-generate report
+            // Verify payment with backend
             const verifyPayment = async (sessionId) => {
                 if (!API_BASE) return;
                 try {
                     const response = await fetch(`${API_BASE}/verify-payment/${sessionId}`);
                     const data = await response.json();
                     if (data.valid) {
+                        // Get customer email from Stripe session
+                        let customerEmail = data.email;
+                        if (!customerEmail) {
+                            // Try to get from Stripe directly
+                            try {
+                                const sessionResponse = await fetch(`${API_BASE}/verify-payment/${sessionId}`);
+                                const sessionData = await sessionResponse.json();
+                                customerEmail = sessionData.email;
+                            } catch (e) {
+                                console.error('Could not get customer email:', e);
+                            }
+                        }
+
                         setPaymentStatus(prev => ({
                             ...prev,
                             hasPaid: true,
                             sessionId: sessionId,
+                            customerEmail: customerEmail,
+                            productPurchased: data.product,
                         }));
-                        
-                        alert('Payment successful! Generating your report...');
-                        
-                        // Call the existing generateReport function
-                        generateReport();
-                        
-                        // Clear saved state after successful generation
-                        clearSavedState();
+
+                        // Store email for report generation
+                        if (customerEmail) {
+                            localStorage.setItem('psv_user_email', customerEmail);
+                        }
+
+                        // Show payment success modal
+                        setShowPaymentSuccessModal(true);
                     }
                 } catch (error) {
                     console.error('Error verifying payment:', error);
-                }
-            };
-
-            // Generate report after successful payment - emails + auto-download
-            const generatePaidReport = async (sessionId) => {
-                try {
-                    // Generate the PDF locally first (returns blob)
-                    const pdfBlob = generateReport(true);
-                    
-                    if (!pdfBlob) {
-                        console.error('Failed to generate PDF locally');
-                        alert('Payment successful! But there was an issue generating your report. Please contact support.');
-                        return;
-                    }
-
-                    // Upload attachments if present
-                    let pidFileId = null;
-                    let miscFileId = null;
-                    
-                    if (pidFile) {
-                        const formData = new FormData();
-                        formData.append('file', pidFile);
-                        const uploadResponse = await fetch(`${API_BASE}/upload-file`, {
-                            method: 'POST',
-                            body: formData
-                        });
-                        if (uploadResponse.ok) {
-                            const uploadData = await uploadResponse.json();
-                            pidFileId = uploadData.file_id;
-                        }
-                    }
-                    
-                    if (miscFile) {
-                        const formData = new FormData();
-                        formData.append('file', miscFile);
-                        const uploadResponse = await fetch(`${API_BASE}/upload-file`, {
-                            method: 'POST',
-                            body: formData
-                        });
-                        if (uploadResponse.ok) {
-                            const uploadData = await uploadResponse.json();
-                            miscFileId = uploadData.file_id;
-                        }
-                    }
-
-                    // Call backend to merge PDFs, send emails, and get final PDF
-                    const formData = new FormData();
-                    formData.append('session_id', sessionId);
-                    formData.append('main_pdf', pdfBlob, 'report.pdf');
-                    formData.append('device_tag', deviceInfo.tag || 'PSV');
-                    if (pidFileId) formData.append('pid_file_id', pidFileId);
-                    if (miscFileId) formData.append('misc_file_id', miscFileId);
-
-                    const response = await fetch(`${API_BASE}/generate-paid-report`, {
-                        method: 'POST',
-                        body: formData
-                    });
-
-                    if (!response.ok) {
-                        throw new Error('Failed to generate report');
-                    }
-
-                    // Auto-download the PDF
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `${deviceInfo.tag || 'PSV'}_Deliverable_${new Date().toISOString().split('T')[0]}.pdf`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    window.URL.revokeObjectURL(url);
-
-                    alert('Payment successful! Your report has been downloaded and emailed to you.');
-                    
-                    // Clear saved state after successful generation
-                    clearSavedState();
-                    
-                } catch (error) {
-                    console.error('Error generating paid report:', error);
-                    alert('Payment successful! Your report is being processed. If it doesn\'t download, please contact support.');
                 }
             };
 
@@ -1840,17 +1704,17 @@ useEffect(() => {
                 setStep(5);
             };
 
-            // Generate PDF Report
-            const generateReport = (returnBlob = false) => {
+            // Generate PDF Report (optionally return as base64 instead of saving)
+            const generateReport = (returnBase64 = false) => {
                 if (!results) {
-                    alert('No results to generate report. Please complete calculations first.');
-                    return;
+                    if (!returnBase64) alert('No results to generate report. Please complete calculations first.');
+                    return returnBase64 ? null : undefined;
                 }
 
                 try {
                     if (!window.jspdf) {
-                        alert('PDF library not loaded. Please refresh the page and try again.');
-                        return;
+                        if (!returnBase64) alert('PDF library not loaded. Please refresh the page and try again.');
+                        return returnBase64 ? null : undefined;
                     }
 
                     const { jsPDF } = window.jspdf;
@@ -2973,7 +2837,7 @@ useEffect(() => {
                     };
 
                     // Handle P&ID file
-                    if (pidFile && !returnBlob) {
+                    if (pidFile) {
                         doc.addPage();
                         yPos = margin;
                         doc.setFontSize(12);
@@ -2991,7 +2855,7 @@ useEffect(() => {
                     }
 
                     // Handle miscellaneous file
-                    if (miscFile && !returnBlob) {
+                    if (miscFile) {
                         doc.addPage();
                         yPos = margin;
                         doc.setFontSize(12);
@@ -3026,202 +2890,210 @@ useEffect(() => {
                         }
                     }
 
-                    // Save the PDF
-                    const filename = `${deviceInfo.tag || 'PSV'}_Deliverable_Rev${reportInfo.revision}_${new Date().toISOString().split('T')[0]}.pdf`;
-                    if (returnBlob) {
-    return doc.output('blob');
-}
-doc.save(filename);
+                    // Return base64 or save the PDF
+                    if (returnBase64) {
+                        return doc.output('datauristring').split(',')[1];
+                    } else {
+                        const filename = `${deviceInfo.tag || 'PSV'}_Deliverable_Rev${reportInfo.revision}_${new Date().toISOString().split('T')[0]}.pdf`;
+                        doc.save(filename);
+                    }
 
                 } catch (error) {
                     console.error('PDF generation error:', error);
-                    alert('Error generating PDF: ' + error.message);
+                    if (!returnBase64) alert('Error generating PDF: ' + error.message);
+                    return returnBase64 ? null : undefined;
                 }
             };
-// Generate Report using Backend API (with proper PDF attachments)
+
+// Generate Report using Backend API (with proper PDF attachments and email)
             const generateReportWithBackend = async () => {
                 if (!results) {
                     alert('No results to generate report. Please complete calculations first.');
                     return;
                 }
 
-                const btn = document.querySelector('[data-generate-btn]');
-                const originalText = btn ? btn.textContent : '';
-                
+                // Get email from payment or prompt
+                let userEmail = paymentStatus.customerEmail || localStorage.getItem('psv_user_email');
+                if (!userEmail) {
+                    userEmail = prompt('Enter your email to receive the report:');
+                    if (!userEmail || !userEmail.includes('@')) {
+                        alert('Valid email required to generate report.');
+                        return;
+                    }
+                    localStorage.setItem('psv_user_email', userEmail);
+                }
+
+                setIsGeneratingReport(true);
+
                 try {
-                    if (btn) {
-                        btn.disabled = true;
-                        btn.textContent = 'Generating...';
-                    }
-
-                    // Check for email (one free report per email)
-                    let userEmail = localStorage.getItem('psv_user_email');
-                    if (!userEmail) {
-                        userEmail = prompt('Enter your email to generate your FREE report:');
-                        if (!userEmail || !userEmail.includes('@')) {
-                            alert('Valid email required to generate report.');
-                            if (btn) {
-                                btn.disabled = false;
-                                btn.textContent = originalText;
-                            }
-                            return;
-                        }
-                        localStorage.setItem('psv_user_email', userEmail);
-                    }
-
-                    // Check if user has already used free report
-                    const checkResponse = await fetch(`${API_BASE}/check-free-report?email=${encodeURIComponent(userEmail)}`);
-                    const checkData = await checkResponse.json();
-
-                    if (!checkData.can_generate_free) {
-                        const proceed = confirm('You have already used your free report. Would you like to purchase another report for $99?');
-                        if (proceed) {
-                            initiateCheckout('standard_report');
-                        }
+                    // Generate PDF client-side (using the full report generator)
+                    const pdfBase64 = generateReport(true);
+                    if (!pdfBase64) {
+                        console.error('PDF generation failed');
+                        generateReport(); // Fallback to local save
+                        setIsGeneratingReport(false);
                         return;
                     }
 
-                    // Check if we have attachments to merge
-                    const hasAttachments = pidFile || miscFile;
-                    
-                    if (!hasAttachments) {
-                        // No attachments - just generate locally and download
-                        console.log('No attachments - generating local PDF');
-                        generateReport();
-                        trackReportGeneration();
-                        alert('Report generated successfully!');
-                        return;
-                    }
-
-                    // We have attachments - need to use backend merge
-                    console.log('Attachments found - using backend merge');
-                    
-                    if (btn) btn.textContent = 'Generating PDF...';
-
-                    // Step 1: Generate the PDF locally as a blob
-                    const pdfBlob = generateReport(true);
-                    
-                    if (!pdfBlob) {
-                        throw new Error('Failed to generate PDF locally');
-                    }
-
-                    if (btn) btn.textContent = 'Uploading attachments...';
-
-                    // Step 2: Upload P&ID file if present
+                    // Upload P&ID file if present
                     let pidFileId = null;
                     if (pidFile) {
                         const formData = new FormData();
                         formData.append('file', pidFile);
-                        const uploadResponse = await fetch(`${API_BASE}/upload-file`, {
-                            method: 'POST',
-                            body: formData
-                        });
-                        if (!uploadResponse.ok) {
-                            throw new Error('Failed to upload P&ID file');
+                        formData.append('file_type', 'pid');
+                        try {
+                            const uploadResponse = await fetch(`${API_BASE}/upload-file`, {
+                                method: 'POST',
+                                body: formData
+                            });
+                            if (uploadResponse.ok) {
+                                const uploadData = await uploadResponse.json();
+                                pidFileId = uploadData.file_id;
+                            }
+                        } catch (uploadError) {
+                            console.warn('P&ID upload failed:', uploadError);
                         }
-                        const uploadData = await uploadResponse.json();
-                        pidFileId = uploadData.file_id;
-                        console.log('P&ID uploaded:', pidFileId);
                     }
 
-                    // Step 3: Upload misc file if present
+                    // Upload misc file if present
                     let miscFileId = null;
                     if (miscFile) {
                         const formData = new FormData();
                         formData.append('file', miscFile);
-                        const uploadResponse = await fetch(`${API_BASE}/upload-file`, {
-                            method: 'POST',
-                            body: formData
-                        });
-                        if (!uploadResponse.ok) {
-                            throw new Error('Failed to upload misc file');
+                        formData.append('file_type', 'misc');
+                        try {
+                            const uploadResponse = await fetch(`${API_BASE}/upload-file`, {
+                                method: 'POST',
+                                body: formData
+                            });
+                            if (uploadResponse.ok) {
+                                const uploadData = await uploadResponse.json();
+                                miscFileId = uploadData.file_id;
+                            }
+                        } catch (uploadError) {
+                            console.warn('Misc file upload failed:', uploadError);
                         }
-                        const uploadData = await uploadResponse.json();
-                        miscFileId = uploadData.file_id;
-                        console.log('Misc file uploaded:', miscFileId);
                     }
 
-                    if (btn) btn.textContent = 'Merging PDFs...';
-
-                    // Step 4: Send to backend for merging
-                    const mergeFormData = new FormData();
-                    mergeFormData.append('main_pdf', pdfBlob, 'report.pdf');
-                    if (pidFileId) mergeFormData.append('pid_file_id', pidFileId);
-                    if (miscFileId) mergeFormData.append('misc_file_id', miscFileId);
-                    mergeFormData.append('device_tag', deviceInfo.tag || 'PSV');
-                    mergeFormData.append('email', userEmail);
-
-                    const mergeResponse = await fetch(`${API_BASE}/merge-pdfs`, {
+                    // Send to backend for merging and email
+                    const response = await fetch(`${API_BASE}/generate-report`, {
                         method: 'POST',
-                        body: mergeFormData
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            email: userEmail,
+                            session_id: paymentStatus.sessionId,
+                            report_pdf_base64: pdfBase64,
+                            device_tag: deviceInfo.tag || 'PSV',
+                            pid_file_id: pidFileId,
+                            misc_file_id: miscFileId
+                        })
                     });
 
-                    if (!mergeResponse.ok) {
-                        const errorText = await mergeResponse.text();
-                        throw new Error(`Merge failed: ${errorText}`);
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.detail || 'Failed to generate report');
                     }
 
-                    // Step 5: Download the merged PDF
-                    const mergedPdfBlob = await mergeResponse.blob();
-                    const url = window.URL.createObjectURL(mergedPdfBlob);
+                    // Check if email was sent
+                    const emailSent = response.headers.get('X-Email-Sent') === 'true';
+
+                    // Download the merged PDF
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = `${deviceInfo.tag || 'PSV'}_Deliverable_Rev${reportInfo.revision || 'A'}_${new Date().toISOString().split('T')[0]}.pdf`;
+                    a.download = `${deviceInfo.tag || 'PSV'}_PSV_Report_${new Date().toISOString().split('T')[0]}.pdf`;
                     document.body.appendChild(a);
                     a.click();
                     document.body.removeChild(a);
                     window.URL.revokeObjectURL(url);
 
-                    // Track that user has used their free report
+                    // Track report generation
                     trackReportGeneration();
-                    alert('Report generated successfully!');
+
+                    // Close modal and show success
+                    setShowPaymentSuccessModal(false);
+
+                    if (emailSent) {
+                        alert(`Report generated and emailed to ${userEmail}!`);
+                    } else {
+                        alert('Report generated successfully! (Email may have failed to send)');
+                    }
+
+                    // Reset payment status after successful generation
+                    if (paymentStatus.hasPaid) {
+                        setPaymentStatus(prev => ({ ...prev, hasPaid: false, sessionId: null, customerEmail: null }));
+                    }
 
                 } catch (error) {
                     console.error('Report generation error:', error);
-                    alert(`Error generating report: ${error.message}\n\nFalling back to local generation...`);
-                    // Fallback to local generation (without attachments)
+                    alert('Error generating report: ' + error.message + '\n\nFalling back to local generation...');
                     generateReport();
                 } finally {
-                    const btn = document.querySelector('[data-generate-btn]');
-                    if (btn) {
-                        btn.textContent = 'Generate FREE Report';
-                        btn.disabled = false;
-                    }
+                    setIsGeneratingReport(false);
                 }
             };
             // Check if all applicable scenarios have valid compositions (>=99%)
             const allCompositionsValid = calculableScenarios.every(s => getTotalMol(s.id) >= 99);
 
             // Updated step order: Device -> Scenario -> Fluid -> Calcs -> Results
-            const STEP_LABELS = ['Start', 'Device', 'Scenario', 'Fluid', 'Calcs', 'Results'];
-// Payment Success Page - show after successful Stripe checkout
-            if (paymentStatus.showSuccessPage) {
-                return (
-                    <div className={`max-w-2xl mx-auto p-6 ${darkMode ? 'dark-mode' : ''}`}>
-                        <div className="bg-white rounded-xl shadow-lg p-8 text-center">
-                            <div className="text-6xl mb-4">✅</div>
-                            <h1 className="text-2xl font-bold text-green-600 mb-2">Payment Successful!</h1>
-                            <p className="text-gray-600 mb-6">
-                                Your payment has been processed. Click below to generate and download your report.
-                            </p>
-                            <button
-                                onClick={() => {
-                                    generatePaidReport(paymentStatus.sessionId);
-                                    setPaymentStatus(prev => ({ ...prev, showSuccessPage: false }));
-                                }}
-                                className="px-8 py-3 bg-blue-600 text-white rounded-lg font-semibold text-lg hover:bg-blue-700 transition"
-                            >
-                                📄 Download Report
-                            </button>
-                            <p className="text-sm text-gray-500 mt-4">
-                                Your report will also be emailed to you.
-                            </p>
-                        </div>
-                    </div>
-                );
-            }
+            const STEP_LABELS = ['Device', 'Scenario', 'Fluid', 'Calcs', 'Results'];
+
             return (
                 <div className={`max-w-4xl mx-auto p-4 sm:p-6 ${darkMode ? 'dark-mode' : ''}`}>
+                    {/* Payment Success Modal */}
+                    {showPaymentSuccessModal && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                            <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md mx-4 text-center">
+                                {/* Green Checkmark */}
+                                <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                </div>
+
+                                <h2 className="text-2xl font-bold text-green-600 mb-2">Payment Successful!</h2>
+                                <p className="text-gray-600 mb-6">
+                                    Your payment has been processed. Click below to generate and download your report.
+                                </p>
+
+                                <button
+                                    onClick={generateReportWithBackend}
+                                    disabled={isGeneratingReport}
+                                    className="w-full py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                >
+                                    {isGeneratingReport ? (
+                                        <>
+                                            <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            Generating Report...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                            </svg>
+                                            Download Report
+                                        </>
+                                    )}
+                                </button>
+
+                                <p className="text-sm text-gray-500 mt-4">
+                                    Your report will also be emailed to {paymentStatus.customerEmail || 'you'}.
+                                </p>
+
+                                <button
+                                    onClick={() => setShowPaymentSuccessModal(false)}
+                                    className="mt-4 text-gray-500 hover:text-gray-700 text-sm underline"
+                                >
+                                    Close and generate later
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Header */}
                     <div className="flex justify-between items-start mb-8">
                         <div>
@@ -3237,19 +3109,6 @@ doc.save(filename);
                                 title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
                             >
                                 {darkMode ? '☀️' : '🌙'}
-                            </button>
-                            {/* Clear All Button */}
-                            <button
-                                onClick={() => {
-                                    if (window.confirm('Are you sure you want to clear all data? This cannot be undone.')) {
-                                        localStorage.removeItem('psv_calculator_state');
-                                        window.location.reload();
-                                    }
-                                }}
-                                className={`p-2 rounded-lg transition ${darkMode ? 'bg-gray-700 text-red-400 hover:bg-gray-600' : 'bg-gray-100 text-red-600 hover:bg-gray-200'}`}
-                                title="Clear All Data"
-                            >
-                                🗑️
                             </button>
                             {/* Device Info - Upper Right */}
                             {step > 1 && (deviceInfo.tag || deviceInfo.pid_number || deviceInfo.facility_name) && (
@@ -3271,13 +3130,13 @@ doc.save(filename);
                     {/* Progress Steps */}
                     <div className="flex justify-center mb-6">
                         <div className="flex items-center space-x-1 sm:space-x-2">
-                            {[0, 1, 2, 3, 4, 5].map((s) => (
+                            {[1, 2, 3, 4, 5].map((s) => (
                                 <React.Fragment key={s}>
                                     <div
                                         className={`step-indicator w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-semibold cursor-pointer text-sm sm:text-base
                                             ${step >= s ? 'franc-accent-bg text-white' : 'bg-gray-200 text-gray-500'}
                                             ${step === s ? 'active ring-4 ring-blue-200' : ''}`}
-                                        onClick={() => (s < step || (step === 0 && s === 1)) && setStep(s)}
+                                        onClick={() => s < step && setStep(s)}
                                     >
                                         {s}
                                     </div>
@@ -3290,49 +3149,10 @@ doc.save(filename);
                     {/* Step Labels */}
                     <div className="flex justify-between mb-8 text-xs sm:text-sm text-gray-500 px-2">
                         {STEP_LABELS.map((label, idx) => (
-    <span 
-        key={label} 
-        className={`cursor-pointer hover:text-blue-500 transition ${step === idx + 1 ? 'font-semibold franc-accent' : ''}`}
-        onClick={() => (idx + 1) < step && setStep(idx + 1)}
-    >
-        {label}
-    </span>
-))}
+                            <span key={label} className={step === idx + 1 ? 'font-semibold franc-accent' : ''}>{label}</span>
+                        ))}
                     </div>
-{/* Example Report Preview - Show on Step 0  */}
-                    {step === 0 && (
-                        <div className={`mb-8 rounded-xl shadow-lg p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                            <div className="text-center mb-6">
-                                <h2 className={`text-2xl font-bold mb-3 ${darkMode ? 'text-blue-400' : 'franc-blue'}`}>
-                                    📄 See What You'll Get
-                                </h2>
-                                <p className={`mb-4 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                    Professional PSV sizing reports with comprehensive calculations, scenario analysis, and complete documentation.
-                                </p>
-                                <div className="flex justify-center gap-4 mb-6">
-                                    <a 
-                                        href={`${API_BASE}/static/example-report.pdf`}
-                                        download="PSV_Example_Report.pdf"
-                                        className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition"
-                                    >
-                                        ⬇️ Download Example
-                                    </a>
-                                    <button 
-                                        onClick={() => setStep(1)}
-                                        className="px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition"
-                                    >
-                                        Get Started →
-                                    </button>
-                                </div>
-                            </div>
-                            <iframe
-    key="example-pdf-viewer"
-   src={`https://docs.google.com/viewer?url=${encodeURIComponent(API_BASE + '/static/example-report.pdf')}&embedded=true`}
-    className="w-full h-[700px] rounded-lg border"
-    title="Example PSV Report"
-/>
-                        </div>
-                    )}
+
                     {/* Step 1: Device Info */}
                     {step === 1 && (
                         <div className="fade-in bg-white rounded-xl shadow-lg p-6">
@@ -5922,11 +5742,11 @@ Because the two cases above do not apply, a detailed analysis has not been perfo
 
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                     <div className="bg-white/10 rounded-lg p-4">
-                                        <p className="font-semibold text-lg">Professional Report</p>
+                                        <p className="font-semibold text-lg">Standard Report</p>
                                         <p className="text-sm text-blue-200 mb-2">
                                             {paymentStatus.reportsGenerated === 0 ? 'First report FREE!' : `${paymentStatus.reportsGenerated} report(s) generated`}
                                         </p>
-                                        <p className="text-3xl font-bold my-2">$99 <span className="text-sm font-normal">Each</span></p>
+                                        <p className="text-3xl font-bold my-2">$99<span className="text-sm font-normal">/each after</span></p>
                                         <ul className="text-sm text-blue-100 space-y-1 mb-4">
                                             <li>✓ Full calculation package</li>
                                             <li>✓ Auto-generated PDF</li>
@@ -5943,7 +5763,7 @@ Because the two cases above do not apply, a detailed analysis has not been perfo
                                                     }
                                                 }}
                                                 className="w-full py-2 bg-white text-blue-600 rounded-lg font-medium hover:bg-blue-50 transition">
-                                                Pay $99 & Generate
+                                                {paymentStatus.reportsGenerated === 0 ? 'Generate FREE Report' : 'Generate Report'}
                                             </button>
                                         ) : (
                                             <button
@@ -5954,7 +5774,6 @@ Because the two cases above do not apply, a detailed analysis has not been perfo
                                             </button>
                                         )}
                                     </div>
-
                                     <div className="bg-white/10 rounded-lg p-4 ring-2 ring-yellow-400">
                                         <p className="font-semibold text-lg">PE-Reviewed Report</p>
                                         <p className="text-sm text-yellow-300 mb-2">Engineer Certified</p>
@@ -6016,7 +5835,7 @@ Because the two cases above do not apply, a detailed analysis has not been perfo
 
                     {/* Footer */}
                     <div className="mt-8 text-center text-sm text-gray-500">
-                        <p>Calculations per API 520/521. Preliminary estimates only — professional engineering verification required.</p>
+                        <p>Calculations per API 520/521. For screening purposes only.</p>
                         <p className="mt-1">© 2024 Franc Engineering | <a href="https://franceng.com" className="hover:underline">franceng.com</a></p>
                     </div>
                 </div>
