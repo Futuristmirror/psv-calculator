@@ -1355,16 +1355,6 @@
                     if (data.valid) {
                         // Get customer email from Stripe session
                         let customerEmail = data.email;
-                        if (!customerEmail) {
-                            // Try to get from Stripe directly
-                            try {
-                                const sessionResponse = await fetch(`${API_BASE}/verify-payment/${sessionId}`);
-                                const sessionData = await sessionResponse.json();
-                                customerEmail = sessionData.email;
-                            } catch (e) {
-                                console.error('Could not get customer email:', e);
-                            }
-                        }
 
                         setPaymentStatus(prev => ({
                             ...prev,
@@ -1379,6 +1369,14 @@
                             localStorage.setItem('psv_user_email', customerEmail);
                         }
 
+                        // Store flag to auto-generate report once state is restored
+                        localStorage.setItem('psv_pending_report', JSON.stringify({
+                            sessionId: sessionId,
+                            email: customerEmail,
+                            product: data.product,
+                            timestamp: Date.now()
+                        }));
+
                         // Show payment success modal
                         setShowPaymentSuccessModal(true);
                     }
@@ -1386,6 +1384,30 @@
                     console.error('Error verifying payment:', error);
                 }
             };
+
+            // Auto-generate report after payment when results are available
+            useEffect(() => {
+                const pendingReport = localStorage.getItem('psv_pending_report');
+                if (pendingReport && results) {
+                    try {
+                        const pending = JSON.parse(pendingReport);
+                        // Only process if less than 5 minutes old
+                        if (pending.timestamp && (Date.now() - pending.timestamp) < 300000) {
+                            // Clear the pending flag first to prevent double execution
+                            localStorage.removeItem('psv_pending_report');
+                            // Auto-generate the report
+                            setTimeout(() => {
+                                generateReportWithBackend();
+                            }, 500); // Small delay to ensure state is fully settled
+                        } else {
+                            localStorage.removeItem('psv_pending_report');
+                        }
+                    } catch (e) {
+                        console.error('Error processing pending report:', e);
+                        localStorage.removeItem('psv_pending_report');
+                    }
+                }
+            }, [results]);
 
             // Initiate Stripe checkout
             const initiateCheckout = async (product = 'standard_report') => {
