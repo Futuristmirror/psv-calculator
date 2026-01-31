@@ -8,10 +8,13 @@ Author: Franc Engineering
 
 import os
 import stripe
-import resend
+import smtplib
+import ssl
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
 import base64
 import io
-import tempfile
 import uuid
 from fastapi import FastAPI, HTTPException, Request, Header, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -37,13 +40,14 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
-# Resend Email Configuration
-RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+# SMTP Email Configuration (uses your existing Railway variables)
+SMTP_HOST = os.getenv("SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+FROM_EMAIL = os.getenv("FROM_EMAIL", "caseym@franceng.com")
+FROM_NAME = os.getenv("FROM_NAME", "Franc Engineering")
 ADMIN_EMAIL = "caseym@franceng.com"
-FROM_EMAIL = os.getenv("FROM_EMAIL", "reports@franceng.com")
-
-if RESEND_API_KEY:
-    resend.api_key = RESEND_API_KEY
 
 # In-memory store for payment sessions (use Redis/DB in production)
 # Maps session_id -> { status, email, created_at, product }
@@ -558,88 +562,90 @@ def merge_pdfs(main_pdf_bytes: bytes, pid_file_id: Optional[str], misc_file_id: 
 
 def send_report_email(customer_email: str, report_bytes: bytes, device_tag: str,
                       pid_file_id: Optional[str] = None, misc_file_id: Optional[str] = None):
-    """Send the report via email to customer and admin"""
-    if not RESEND_API_KEY:
-        print("Resend API key not configured, skipping email")
+    """Send the report via email using SMTP to customer and admin"""
+    if not SMTP_HOST or not SMTP_USER or not SMTP_PASSWORD:
+        print("SMTP not configured, skipping email")
         return False
 
     filename = f"{device_tag}_PSV_Report_{time.strftime('%Y-%m-%d')}.pdf"
 
-    # Build attachments list
-    attachments = [
-        {
-            "filename": filename,
-            "content": base64.b64encode(report_bytes).decode('utf-8'),
-            "content_type": "application/pdf"
-        }
-    ]
-
-    # Add P&ID attachment if it's not a PDF (PDFs are merged into main report)
-    if pid_file_id and pid_file_id in uploaded_files:
-        pid_data = uploaded_files[pid_file_id]
-        if pid_data.get("content_type") != "application/pdf":
-            attachments.append({
-                "filename": f"PID_{pid_data['filename']}",
-                "content": base64.b64encode(pid_data["content"]).decode('utf-8'),
-                "content_type": pid_data.get("content_type", "application/octet-stream")
-            })
-
-    # Add Misc attachment if it's not a PDF (PDFs are merged into main report)
-    if misc_file_id and misc_file_id in uploaded_files:
-        misc_data = uploaded_files[misc_file_id]
-        if misc_data.get("content_type") != "application/pdf":
-            attachments.append({
-                "filename": f"Misc_{misc_data['filename']}",
-                "content": base64.b64encode(misc_data["content"]).decode('utf-8'),
-                "content_type": misc_data.get("content_type", "application/octet-stream")
-            })
-
-    # Send to both customer and admin
+    # Recipients: customer + admin
     recipients = [customer_email]
-    if ADMIN_EMAIL and ADMIN_EMAIL != customer_email:
+    if ADMIN_EMAIL and ADMIN_EMAIL.lower() != customer_email.lower():
         recipients.append(ADMIN_EMAIL)
 
-    try:
-        params = {
-            "from": f"Franc Engineering <{FROM_EMAIL}>",
-            "to": recipients,
-            "subject": f"PSV Sizing Report - {device_tag}",
-            "html": f"""
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                    <div style="background-color: #1e40af; padding: 20px; text-align: center;">
-                        <h1 style="color: white; margin: 0;">Franc Engineering</h1>
-                    </div>
-                    <div style="padding: 30px; background-color: #f8f9fa;">
-                        <h2 style="color: #1e40af;">Your PSV Sizing Report</h2>
-                        <p>Thank you for using the Franc Engineering PSV Calculator!</p>
-                        <p>Your PSV sizing report for <strong>{device_tag}</strong> is attached to this email.</p>
-                        <div style="background-color: #e8f4f8; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                            <p style="margin: 0;"><strong>Report Details:</strong></p>
-                            <ul style="margin: 10px 0;">
-                                <li>Device Tag: {device_tag}</li>
-                                <li>Generated: {time.strftime('%Y-%m-%d %H:%M UTC')}</li>
-                            </ul>
-                        </div>
-                        <p>If you have any questions about your report or need engineering services, please contact us.</p>
-                        <p style="margin-top: 30px;">
-                            Best regards,<br>
-                            <strong>Franc Engineering Team</strong>
-                        </p>
-                    </div>
-                    <div style="background-color: #1e40af; padding: 15px; text-align: center;">
-                        <p style="color: white; margin: 0; font-size: 12px;">
-                            <a href="https://franceng.com" style="color: #93c5fd;">franceng.com</a> |
-                            <a href="mailto:caseym@franceng.com" style="color: #93c5fd;">caseym@franceng.com</a>
-                        </p>
-                    </div>
-                </div>
-            """,
-            "attachments": attachments
-        }
+    # Build HTML email body
+    html_body = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background-color: #1e40af; padding: 20px; text-align: center;">
+            <h1 style="color: white; margin: 0;">Franc Engineering</h1>
+        </div>
+        <div style="padding: 30px; background-color: #f8f9fa;">
+            <h2 style="color: #1e40af;">Your PSV Sizing Report</h2>
+            <p>Thank you for using the Franc Engineering PSV Calculator!</p>
+            <p>Your PSV sizing report for <strong>{device_tag}</strong> is attached to this email.</p>
+            <div style="background-color: #e8f4f8; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <p style="margin: 0;"><strong>Report Details:</strong></p>
+                <ul style="margin: 10px 0;">
+                    <li>Device Tag: {device_tag}</li>
+                    <li>Generated: {time.strftime('%Y-%m-%d %H:%M UTC')}</li>
+                </ul>
+            </div>
+            <p>If you have any questions about your report or need engineering services, please contact us.</p>
+            <p style="margin-top: 30px;">
+                Best regards,<br>
+                <strong>Franc Engineering Team</strong>
+            </p>
+        </div>
+        <div style="background-color: #1e40af; padding: 15px; text-align: center;">
+            <p style="color: white; margin: 0; font-size: 12px;">
+                <a href="https://franceng.com" style="color: #93c5fd;">franceng.com</a> |
+                <a href="mailto:caseym@franceng.com" style="color: #93c5fd;">caseym@franceng.com</a>
+            </p>
+        </div>
+    </div>
+    """
 
-        response = resend.Emails.send(params)
-        print(f"Email sent successfully: {response}")
+    try:
+        # Create message
+        msg = MIMEMultipart()
+        msg['From'] = f"{FROM_NAME} <{FROM_EMAIL}>"
+        msg['To'] = ", ".join(recipients)
+        msg['Subject'] = f"PSV Sizing Report - {device_tag}"
+
+        # Attach HTML body
+        msg.attach(MIMEText(html_body, 'html'))
+
+        # Attach main PDF report
+        pdf_attachment = MIMEApplication(report_bytes, _subtype='pdf')
+        pdf_attachment.add_header('Content-Disposition', 'attachment', filename=filename)
+        msg.attach(pdf_attachment)
+
+        # Attach P&ID if it's not a PDF (PDFs are already merged)
+        if pid_file_id and pid_file_id in uploaded_files:
+            pid_data = uploaded_files[pid_file_id]
+            if pid_data.get("content_type") != "application/pdf":
+                pid_attachment = MIMEApplication(pid_data["content"])
+                pid_attachment.add_header('Content-Disposition', 'attachment', filename=f"PID_{pid_data['filename']}")
+                msg.attach(pid_attachment)
+
+        # Attach Misc if it's not a PDF (PDFs are already merged)
+        if misc_file_id and misc_file_id in uploaded_files:
+            misc_data = uploaded_files[misc_file_id]
+            if misc_data.get("content_type") != "application/pdf":
+                misc_attachment = MIMEApplication(misc_data["content"])
+                misc_attachment.add_header('Content-Disposition', 'attachment', filename=f"Misc_{misc_data['filename']}")
+                msg.attach(misc_attachment)
+
+        # Send via SMTP SSL (port 465)
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=context) as server:
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.sendmail(FROM_EMAIL, recipients, msg.as_string())
+
+        print(f"Email sent successfully to {recipients}")
         return True
+
     except Exception as e:
         print(f"Failed to send email: {e}")
         return False
@@ -698,7 +704,7 @@ async def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "email_configured": bool(RESEND_API_KEY),
+        "email_configured": bool(SMTP_HOST and SMTP_USER and SMTP_PASSWORD),
         "pdf_merge_available": PDF_MERGE_AVAILABLE
     }
 
