@@ -3205,17 +3205,18 @@ doc.save(filename);
                                 Your payment has been processed. Click below to generate and download your report.
                             </p>
                            <button
-    onClick={async () => {
-        // Check if we have results, if not alert user
-        if (!results) {
-            alert('Your session data was lost. Please re-enter your calculation data and try the free report option, then contact support for a refund or credit.');
-            setPaymentStatus(prev => ({ ...prev, showSuccessPage: false }));
-            setStep(1);
-            return;
-        }
-        generatePaidReport(paymentStatus.sessionId);
-        setPaymentStatus(prev => ({ ...prev, showSuccessPage: false }));
-    }}
+    onClick={() => {
+                    // Check if we have results, if not alert user
+                    if (!results) {
+                        alert('Your session data was lost. Please re-enter your calculation data and try the free report option, then contact support for a refund or credit.');
+                        setPaymentStatus(prev => ({ ...prev, showSuccessPage: false }));
+                        setStep(1);
+                        return;
+                    }
+                    // Just generate the report directly - skip backend complexity
+                    generateReport();
+                    setPaymentStatus(prev => ({ ...prev, showSuccessPage: false, hasPaid: false }));
+                }}
                                 className="px-8 py-3 bg-blue-600 text-white rounded-lg font-semibold text-lg hover:bg-blue-700 transition"
                             >
                                 📄 Download Report
