@@ -1360,11 +1360,14 @@ useEffect(() => {
             .catch(() => {});
     }
 
-    if (payment === 'success' && sessionId) {
-        // Wait a moment for state to restore, then verify payment
-        setTimeout(() => {
-            verifyPayment(sessionId);
-        }, 500);
+   if (payment === 'success' && sessionId) {
+        // Store session ID and show success state - user will click button to download
+        setPaymentStatus(prev => ({
+            ...prev,
+            hasPaid: true,
+            sessionId: sessionId,
+            showSuccessPage: true,
+        }));
         // Clean up URL
         window.history.replaceState({}, '', window.location.pathname);
     } else if (payment === 'cancelled') {
