@@ -1264,12 +1264,13 @@
             });
 
             // Payment state
-            const [paymentStatus, setPaymentStatus] = useState({
-                hasPaid: false,
-                sessionId: null,
-                reportsGenerated: 0, // Track free reports used
-                stripeConfigured: false,
-            });
+           const [paymentStatus, setPaymentStatus] = useState({
+    hasPaid: false,
+    sessionId: null,
+    reportsGenerated: 0, // Track free reports used
+    stripeConfigured: false,
+    showSuccessPage: false,
+});
             const [isProcessingPayment, setIsProcessingPayment] = useState(false);
             const [isRestored, setIsRestored] = useState(false);
 // ============================================
