@@ -1297,12 +1297,51 @@
                 }
 
                 if (payment === 'success' && sessionId) {
+                    // Restore saved state from before checkout
+                    const savedStateJson = localStorage.getItem('psv_checkout_state');
+                    if (savedStateJson) {
+                        try {
+                            const savedState = JSON.parse(savedStateJson);
+                            // Only restore if less than 1 hour old
+                            if (savedState.timestamp && (Date.now() - savedState.timestamp) < 3600000) {
+                                if (savedState.deviceInfo) setDeviceInfo(savedState.deviceInfo);
+                                if (savedState.reportInfo) setReportInfo(savedState.reportInfo);
+                                if (savedState.scenarioSelections) setScenarioSelections(savedState.scenarioSelections);
+                                if (savedState.compositions) setCompositions(savedState.compositions);
+                                if (savedState.vesselDetails) setVesselDetails(savedState.vesselDetails);
+                                if (savedState.scenarioConditions) setScenarioConditions(savedState.scenarioConditions);
+                                if (savedState.results) setResults(savedState.results);
+                                if (savedState.step) setStep(savedState.step);
+                            }
+                        } catch (e) {
+                            console.error('Error restoring saved state:', e);
+                        }
+                    }
                     // Verify payment with backend
                     verifyPayment(sessionId);
                     // Clean up URL
                     window.history.replaceState({}, '', window.location.pathname);
                 } else if (payment === 'cancelled') {
-                    alert('Payment was cancelled. You can try again when ready.');
+                    // Restore state on cancel too so user doesn't lose work
+                    const savedStateJson = localStorage.getItem('psv_checkout_state');
+                    if (savedStateJson) {
+                        try {
+                            const savedState = JSON.parse(savedStateJson);
+                            if (savedState.timestamp && (Date.now() - savedState.timestamp) < 3600000) {
+                                if (savedState.deviceInfo) setDeviceInfo(savedState.deviceInfo);
+                                if (savedState.reportInfo) setReportInfo(savedState.reportInfo);
+                                if (savedState.scenarioSelections) setScenarioSelections(savedState.scenarioSelections);
+                                if (savedState.compositions) setCompositions(savedState.compositions);
+                                if (savedState.vesselDetails) setVesselDetails(savedState.vesselDetails);
+                                if (savedState.scenarioConditions) setScenarioConditions(savedState.scenarioConditions);
+                                if (savedState.results) setResults(savedState.results);
+                                if (savedState.step) setStep(savedState.step);
+                            }
+                        } catch (e) {
+                            console.error('Error restoring saved state:', e);
+                        }
+                    }
+                    alert('Payment was cancelled. Your work has been restored.');
                     window.history.replaceState({}, '', window.location.pathname);
                 }
             }, []);
@@ -1355,6 +1394,20 @@
                     return;
                 }
 
+                // Save all form data to localStorage before redirecting to Stripe
+                const savedState = {
+                    deviceInfo,
+                    reportInfo,
+                    scenarioSelections,
+                    compositions,
+                    vesselDetails,
+                    scenarioConditions,
+                    results,
+                    step,
+                    timestamp: Date.now()
+                };
+                localStorage.setItem('psv_checkout_state', JSON.stringify(savedState));
+
                 setIsProcessingPayment(true);
                 try {
                     const currentUrl = window.location.href.split('?')[0];
@@ -1380,6 +1433,8 @@
                     console.error('Checkout error:', error);
                     alert(`Checkout error: ${error.message}`);
                     setIsProcessingPayment(false);
+                    // Clean up saved state on error
+                    localStorage.removeItem('psv_checkout_state');
                 }
             };
 
@@ -3013,6 +3068,9 @@
 
                     // Close modal and show success
                     setShowPaymentSuccessModal(false);
+
+                    // Clean up saved checkout state
+                    localStorage.removeItem('psv_checkout_state');
 
                     if (emailSent) {
                         alert(`Report generated and emailed to ${userEmail}!`);
