@@ -3204,64 +3204,11 @@ doc.save(filename);
                             <p className="text-gray-600 mb-6">
                                 Your payment has been processed. Click below to generate and download your report.
                             </p>
-                           <button
-    onClick={async () => {
-    // Check if we have results
-    if (!results) {
-        alert('Your session data was lost. Please re-enter your calculation data and contact support for a refund.');
-        setPaymentStatus(prev => ({ ...prev, showSuccessPage: false }));
-        setStep(1);
-        return;
-    }
-    
-    try {
-        // 1. Generate main PDF as blob
-        const mainPdfBlob = generateReport(true);
-        
-        // 2. Get customer email from Stripe
-        let customerEmail = '';
-        try {
-            const response = await fetch(`${API_BASE}/verify-payment/${paymentStatus.sessionId}`);
-            const data = await response.json();
-            customerEmail = data.email || '';
-        } catch (e) {
-            console.log('Could not get customer email');
-        }
-        
-        // 3. Build form data
-        const formData = new FormData();
-        formData.append('main_pdf', mainPdfBlob, 'report.pdf');
-        formData.append('device_tag', deviceInfo.tag || 'PSV');
-        formData.append('email', customerEmail);
-        if (pidFile) formData.append('pid_file', pidFile);
-        if (miscFile) formData.append('misc_file', miscFile);
-        
-        // 4. Call merge endpoint
-        const mergeResponse = await fetch(`${API_BASE}/merge-pdfs`, {
-            method: 'POST',
-            body: formData,
-        });
-        
-        if (mergeResponse.ok) {
-            // 5. Download merged PDF
-            const blob = await mergeResponse.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${deviceInfo.tag || 'PSV'}_Report.pdf`;
-            a.click();
-            URL.revokeObjectURL(url);
-        } else {
-            throw new Error('Merge failed');
-        }
-    } catch (error) {
-        console.error('Error:', error);
-        // Fallback - just download the basic report
-        generateReport();
-    }
-    
-    setPaymentStatus(prev => ({ ...prev, showSuccessPage: false, hasPaid: false }));
-}}
+                            <button
+                                onClick={() => {
+                                    generatePaidReport(paymentStatus.sessionId);
+                                    setPaymentStatus(prev => ({ ...prev, showSuccessPage: false }));
+                                }}
                                 className="px-8 py-3 bg-blue-600 text-white rounded-lg font-semibold text-lg hover:bg-blue-700 transition"
                             >
                                 📄 Download Report
